@@ -33,30 +33,58 @@ from states.order import AddPromoStates
 from utils.parsing import safe_int
 
 router = Router(name="order_admin")
+router.message.filter(F.chat.type == "private")
+router.callback_query.filter(F.message.chat.type == "private")
 log = logging.getLogger(__name__)
 
 
 def _is_admin(user_id: int, config: Config) -> bool:
-    return user_id in config.admin_ids
+    return user_id in config.team_ids
+
+
+async def notify_manager(bot: Bot, config: Config, order: OrderSummary) -> bool:
+    target = config.owner_chat_id
+    if not target:
+        return False
+    try:
+        await bot.send_message(target, "🆕 <b>Новая заявка</b>\n\n" + _order_card(order),
+                               reply_markup=_status_kb(order))
+        return True
+    except TelegramAPIError:
+        log.warning("Manager notification failed for order %s", order.id)
+        return False
+
+
+@router.callback_query(F.data == "team_orders")
+@router.callback_query(F.data.startswith("team_orders:"))
+async def cb_team_orders(call: CallbackQuery, db: Database, config: Config) -> None:
+    if not _is_admin(call.from_user.id, config):
+        await call.answer("Доступ только для команды", show_alert=True)
+        return
+    from handlers.admin import show_team_orders
+    page = safe_int(call.data.partition(":")[2]) or 0
+    await show_team_orders(call.message, db, page=min(max(page, 0), 100000))
+    await call.answer()
 
 
 def _order_card(order: OrderSummary) -> str:
     lines = [
-        f"🧾 <b>Order #{order.id}</b> — {STATUS_LABELS.get(order.status, order.status)}",
-        f"<b>Created:</b> {escape(order.created_at)}",
-        f"<b>Customer:</b> {escape(order.full_name)}",
-        f"<b>Phone:</b> {escape(order.phone)}",
-        f"<b>Address:</b> {escape(order.address)}",
+        f"🧾 <b>Заявка #{order.id}</b> — {STATUS_LABELS.get(order.status, order.status)}",
+        f"<b>Создана:</b> {escape(order.created_at)} UTC",
+        f"<b>Покупатель:</b> {escape(order.full_name)}",
+        f"<b>Телефон:</b> {escape(order.phone)}",
+        f"<b>Адрес / комментарий:</b> {escape(order.address)}",
         f"<b>User id:</b> <code>{order.user_id}</code>",
     ]
     if order.username:
         lines.append(f"<b>Username:</b> @{escape(order.username)}")
     lines.append("")
-    lines.append("<b>Items:</b>")
+    lines.append("<b>Состав:</b>")
     for item in order.items:
         lines.append(
-            f"• {escape(item.name)} — {item.quantity} × ${item.price:.2f} "
-            f"= ${item.subtotal:.2f}"
+            f"• {escape(item.name)} — {item.quantity} × {item.price:.0f} ₽ "
+            f"= {item.subtotal:.0f} ₽" if item.price else
+            f"• {escape(item.name)} — {item.quantity} шт. · цена уточняется"
         )
     lines.append("")
     if order.discount_amount > 0:
@@ -66,7 +94,7 @@ def _order_card(order: OrderSummary) -> str:
                 f"Promo <code>{escape(order.promo_code)}</code>: "
                 f"−${order.discount_amount:.2f}"
             )
-    lines.append(f"<b>Total: ${order.total:.2f}</b>")
+    lines.append(f"<b>Сумма известных цен: {order.total:.0f} ₽</b>" if any(not i.price for i in order.items) else f"<b>Итого: {order.total:.0f} ₽</b>")
     if order.payment_charge_id:
         lines.append(
             f"<i>💳 Paid via {escape(order.payment_provider or 'card')}</i>"
@@ -84,7 +112,8 @@ def _status_kb(order: OrderSummary) -> InlineKeyboardMarkup:
                 text=f"➡ {STATUS_LABELS.get(status, status)}",
                 callback_data=f"ord_set:{order.id}:{status}",
             )
-    builder.button(text="🔄 Refresh", callback_data=f"ord_show:{order.id}")
+    builder.button(text="🔄 Обновить", callback_data=f"ord_show:{order.id}")
+    builder.button(text="📋 Все заявки", callback_data="team_orders")
     builder.adjust(1)
     return builder.as_markup()
 
@@ -93,18 +122,18 @@ async def _notify_customer(bot: Bot, order: OrderSummary, new_status: str) -> No
     """Send the customer a friendly status update."""
     nice = STATUS_LABELS.get(new_status, new_status)
     text = (
-        f"📦 <b>Order #{order.id} update</b>\n\n"
-        f"Status: {nice}\n"
-        f"Total: ${order.total:.2f}"
+        f"📦 <b>Заявка #{order.id}</b>\n\n"
+        f"Статус: {nice}\n"
+        f"Сумма: {order.total:.0f} ₽"
     )
     if new_status == "confirmed":
-        text += "\n\n✅ Thanks! Your order has been accepted and we're preparing it."
+        text += "\n\nКоманда приняла заявку и собирает заказ."
     elif new_status == "shipping":
-        text += "\n\n🚚 Your order is on its way. Expect delivery in 1–3 business days."
+        text += "\n\nЗаказ передан в доставку. Сроки уточнит менеджер."
     elif new_status == "delivered":
-        text += "\n\n🎉 Delivered! We hope you enjoy your coffee. ☕"
+        text += "\n\nЗаказ получен. Спасибо!"
     elif new_status == "cancelled":
-        text += "\n\n❌ Your order has been cancelled. Contact support if this is a mistake."
+        text += "\n\nЗаявка отменена. По вопросам свяжитесь с менеджером."
     try:
         await bot.send_message(order.user_id, text)
     except TelegramAPIError as exc:

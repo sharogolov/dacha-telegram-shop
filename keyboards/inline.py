@@ -8,7 +8,6 @@ from __future__ import annotations
 from aiogram.types import (
     InlineKeyboardButton,
     InlineKeyboardMarkup,
-    WebAppInfo,
 )
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
@@ -27,9 +26,9 @@ def main_menu_kb(*, webapp_url: str | None = None) -> InlineKeyboardMarkup:
 
     builder = InlineKeyboardBuilder()
     if webapp_url:
-        builder.button(text="🍷 Открыть магазин", web_app=WebAppInfo(url=webapp_url))
-    builder.button(text="📦 My orders", callback_data="my_orders")
-    builder.button(text="ℹ️ About", callback_data="about")
+        builder.button(text="🛍 Открыть магазин", callback_data="open_shop")
+    builder.button(text="📦 Мои заявки", callback_data="my_orders")
+    builder.button(text="ℹ️ О магазине", callback_data="about")
     if not webapp_url:
         builder.button(text="🛍 Catalog", callback_data="catalog")
         builder.button(text="🧺 Cart", callback_data="cart")

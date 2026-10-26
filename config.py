@@ -52,6 +52,10 @@ class Config:
     webapp_url: str = ""
 
     @property
+    def team_ids(self) -> set[int]:
+        return set(self.admin_ids) | ({self.owner_chat_id} if self.owner_chat_id > 0 else set())
+
+    @property
     def payments_enabled(self) -> bool:
         return bool(self.payment_provider_token)
 

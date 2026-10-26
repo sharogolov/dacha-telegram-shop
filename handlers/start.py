@@ -1,8 +1,9 @@
 """/start, /help, the main menu, About screen, and deep-links."""
 from aiogram import F, Router
 from aiogram.filters import Command, CommandObject, CommandStart
-from aiogram.types import CallbackQuery, Message
+from aiogram.types import CallbackQuery, KeyboardButton, Message, ReplyKeyboardMarkup, WebAppInfo
 
+from config import Config
 from database import Database
 from keyboards.inline import main_menu_kb, product_kb
 from utils.parsing import safe_int
@@ -25,7 +26,7 @@ ABOUT_TEXT = (
 
 
 @router.message(CommandStart())
-async def cmd_start(message: Message, command: CommandObject, db: Database) -> None:
+async def cmd_start(message: Message, command: CommandObject, db: Database, config: Config) -> None:
     """Show the main menu, or jump straight to a product if the user came in
     via a `?start=product_N` deep link from inline search."""
     arg = (command.args or "").strip()
@@ -42,7 +43,27 @@ async def cmd_start(message: Message, command: CommandObject, db: Database) -> N
                 )
                 await message.answer(caption, reply_markup=product_kb(product))
                 return
-    await message.answer(WELCOME_TEXT, reply_markup=main_menu_kb())
+    await show_shop_menu(message, config, message.from_user.id)
+
+
+async def show_shop_menu(message: Message, config: Config, user_id: int) -> None:
+    if not config.webapp_url:
+        await message.answer(WELCOME_TEXT, reply_markup=main_menu_kb())
+        return
+    if message.chat.type != "private":
+        await message.answer("Откройте магазин в личном чате с ботом: /start.")
+        return
+    rows = [[KeyboardButton(text="🛍 Открыть магазин", web_app=WebAppInfo(url=config.webapp_url))],
+            [KeyboardButton(text="📦 Мои заявки")]]
+    if user_id in config.team_ids:
+        rows.append([KeyboardButton(text="📋 Заказы команды")])
+    await message.answer(WELCOME_TEXT, reply_markup=ReplyKeyboardMarkup(keyboard=rows, resize_keyboard=True))
+
+
+@router.callback_query(F.data == "open_shop")
+async def cb_open_shop(call: CallbackQuery, config: Config) -> None:
+    await show_shop_menu(call.message, config, call.from_user.id)
+    await call.answer()
 
 
 @router.message(Command("help"))

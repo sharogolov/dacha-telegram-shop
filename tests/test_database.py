@@ -15,8 +15,8 @@ async def test_seed_creates_full_catalog(seeded_db):
     products = []
     for cat in await seeded_db.list_categories():
         products.extend(await seeded_db.list_products(cat.id))
-    assert len(products) == 5
-    assert len({p.id for p in products}) == 5, "ids must be unique"
+    assert len(products) == 13
+    assert len({p.id for p in products}) == 13, "ids must be unique"
 
 
 @pytest.mark.asyncio
@@ -24,8 +24,8 @@ async def test_categories_sorted_by_id_not_alphabet(seeded_db):
     """Catalog should reflect intent order from seed_data.py, not A→Z."""
     cats = await seeded_db.list_categories()
     names = [c.name for c in cats]
-    assert names[0] == "Красное вино"
-    assert names[-1] == "Игристое"
+    assert names[0] == "Оранжевые"
+    assert names[-1] == "Лёгкие красные"
     assert names != sorted(names), "categories must NOT be alphabetised"
 
 
@@ -117,15 +117,15 @@ async def test_create_order_with_promo(seeded_db):
     await seeded_db.add_to_cart(99, 4, qty=5)
 
     promo = await seeded_db.get_promo_code("SPRING10")
-    discount = promo.discount_for(6250.0)      # 5×1250 ₽
+    discount = promo.discount_for(10000.0)      # 5×2000 ₽
 
     order = await seeded_db.create_order(
         99, "tester", "T", "+1", "Addr",
         promo_code="SPRING10", discount_amount=discount,
     )
-    assert order.subtotal == 6250.0
-    assert order.discount_amount == 625.0
-    assert order.total == 5625.0
+    assert order.subtotal == 10000.0
+    assert order.discount_amount == 1000.0
+    assert order.total == 9000.0
     assert order.user_id == 99
 
 
@@ -214,12 +214,12 @@ def test_status_transitions_exhaustive(status):
 
 @pytest.mark.asyncio
 async def test_search_is_case_insensitive_and_skips_oos(seeded_db):
-    hits_lower = await seeded_db.search_products("сухое")
+    hits_lower = await seeded_db.search_products("Саперави")
     # SQLite NOCASE is ASCII-only; Cyrillic matching is validated by the
     # catalog query itself and remains stable for the storefront language.
-    hits_upper = await seeded_db.search_products("сухое")
+    hits_upper = await seeded_db.search_products("Саперави")
     assert {p.name for p in hits_lower} == {p.name for p in hits_upper}
-    assert any("сухое" in p.name.lower() for p in hits_lower)
+    assert any("саперави" in p.name.lower() for p in hits_lower)
 
 
 @pytest.mark.asyncio

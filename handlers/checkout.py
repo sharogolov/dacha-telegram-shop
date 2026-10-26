@@ -13,7 +13,7 @@ from aiogram.fsm.context import FSMContext
 from aiogram.types import CallbackQuery, Message
 
 from config import Config
-from database import Database, OrderSummary
+from database import STATUS_LABELS, Database, OrderSummary
 from keyboards.inline import cancel_kb, confirm_order_kb, main_menu_kb
 from states.order import CheckoutStates
 from utils.telegram import replace_or_edit
@@ -257,44 +257,38 @@ async def confirm_order(
     await replace_or_edit(call.message, user_text, main_menu_kb())
     await call.answer("Order placed!")
 
-    # Notify the shop owner in their dedicated chat.
-    if config.owner_chat_id:
-        username_display = (
-            f"@{escape(call.from_user.username)}" if call.from_user.username else "—"
-        )
-        owner_text = (
-            "🆕 <b>New order received</b>\n\n"
-            + _format_summary(order, config.currency)
-            + f"\n\n<b>Customer:</b> {username_display} (id <code>{call.from_user.id}</code>)"
-        )
-        try:
-            await bot.send_message(config.owner_chat_id, owner_text)
-        except Exception as exc:
-            log.warning("Could not notify owner chat %s: %s", config.owner_chat_id, exc)
+    from handlers.order_admin import notify_manager
+    if not await notify_manager(bot, config, order):
+        await call.message.answer("Заявка сохранена в общем списке, но уведомление менеджеру пока не доставлено.")
 
 
 def _format_user_orders(orders: list[OrderSummary]) -> str:
     if not orders:
-        return "You don't have any orders yet."
-    lines = ["📦 <b>Your recent orders</b>", ""]
+        return "У вас пока нет заявок."
+    lines = ["📦 <b>Ваши заявки</b>", ""]
     for o in orders:
         item_count = sum(item.quantity for item in o.items)
-        items_label = "item" if item_count == 1 else "items"
         lines.append(
-            f"#{o.id} · {escape(o.created_at)} · ${o.total:.2f} · "
-            f"{item_count} {items_label} · <i>{escape(o.status)}</i>"
+            f"#{o.id} · {escape(o.created_at)} UTC · {o.total:.0f} ₽ · "
+            f"{item_count} шт. · <i>{escape(STATUS_LABELS.get(o.status, o.status))}</i>"
         )
     return "\n".join(lines)
 
 
 @router.message(Command("orders"))
+@router.message(F.text == "📦 Мои заявки")
 async def cmd_my_orders(message: Message, db: Database) -> None:
+    if message.chat.type != "private":
+        return
     orders = await db.list_user_orders(message.from_user.id, limit=10)
     await message.answer(_format_user_orders(orders))
 
 
 @router.callback_query(F.data == "my_orders")
 async def cb_my_orders(call: CallbackQuery, db: Database) -> None:
+    if call.message.chat.type != "private":
+        await call.answer("Заявки доступны в личном чате с ботом", show_alert=True)
+        return
     orders = await db.list_user_orders(call.from_user.id, limit=10)
     text = _format_user_orders(orders)
     await replace_or_edit(call.message, text, main_menu_kb())

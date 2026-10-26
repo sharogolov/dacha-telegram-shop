@@ -22,7 +22,7 @@
     html { background: var(--cream); }
     body { margin: 0; background: var(--cream); color: var(--ink); font: 15px/1.55 var(--sans); -webkit-font-smoothing: antialiased; }
     button { color: inherit; font: inherit; }
-    .shell { width: min(100%, 680px); min-height: 100vh; margin: 0 auto; padding: max(20px, env(safe-area-inset-top)) 22px max(34px, env(safe-area-inset-bottom)); }
+    .shell { width: min(100%, 680px); min-height: 100vh; margin: 0 auto; padding: max(20px, env(safe-area-inset-top)) 22px max(110px, env(safe-area-inset-bottom)); }
     .masthead { display: flex; justify-content: space-between; align-items: center; gap: 14px; padding: 5px 0 17px; border-bottom: 1px solid var(--line); color: var(--wine); font-size: 10px; letter-spacing: 1.8px; text-transform: uppercase; }
     .masthead .place { color: var(--muted); text-align: right; letter-spacing: 1.2px; }
     .hero { padding: 48px 0 37px; border-bottom: 1px solid var(--line); }
@@ -82,81 +82,32 @@
       .wine-row { grid-template-columns: 72px minmax(0, 1fr) 15px; gap: 11px; }
       .wine-thumb { width: 72px; height: 96px; }
     }
+
+    .cart-dock { position: fixed; z-index: 3; bottom: 0; left: 50%; transform: translateX(-50%); width: min(100%, 680px); padding: 12px 22px max(14px, env(safe-area-inset-bottom)); background: var(--cream); border-top: 1px solid var(--line); }
+    .primary { display: block; width: 100%; padding: 15px 17px; border: 0; background: var(--wine); color: white; text-align: center; cursor: pointer; font-size: 14px; }
+    button:disabled { opacity: .5; cursor: default; }
+    button:focus-visible, input:focus-visible, textarea:focus-visible { outline: 2px solid var(--wine); outline-offset: 3px; }
+    .purchase { margin-top: 22px; }
+    .price { display: block; color: var(--wine); font-size: 14px; margin: 9px 0; }
+    .stock-note { color: var(--muted); font-size: 12px; }
+    .quantity { display: flex; align-items: center; justify-content: space-between; border: 1px solid var(--line); margin: 10px 0; }
+    .quantity button { min-width: 46px; min-height: 44px; border: 0; background: transparent; color: var(--wine); cursor: pointer; font-size: 21px; }
+    .cart-item { display: grid; grid-template-columns: 65px minmax(0, 1fr); gap: 16px; padding: 18px 0; border-bottom: 1px solid var(--line); }
+    .cart-item img { width: 65px; height: 120px; object-fit: contain; }
+    .cart-item h2 { margin: 0; font-size: 23px; line-height: 1.1; }
+    .cart-summary { padding: 20px 0; }
+    .cart-total { display: flex; justify-content: space-between; gap: 12px; font: 26px var(--serif); }
+    .small { color: var(--muted); font-size: 12px; }
+    .checkout-form { margin-top: 25px; }
+    .checkout-form label { display: block; margin: 18px 0 5px; color: var(--wine); font-size: 13px; }
+    .checkout-form input, .checkout-form textarea { width: 100%; border: 1px solid var(--line); border-radius: 0; padding: 13px; background: var(--paper); color: var(--ink); font: 16px/1.4 var(--sans); }
+    .checkout-form textarea { min-height: 100px; resize: vertical; }
+    .form-error { margin: 12px 0; color: #8c2323; font-size: 13px; }
+    .notice { margin: 20px 0; padding: 14px; background: #e9e0d4; color: #5c5047; font-size: 13px; }
   </style>
 </head>
 <body>
   <main class="shell" id="app" aria-live="polite"><p class="state-message">Открываем винную карту…</p></main>
-  <script>
-    (() => {
-      const tg = window.Telegram && window.Telegram.WebApp;
-      const app = document.getElementById('app');
-      let wines = [];
-      let screen = { name: 'home' };
-      const esc = value => String(value ?? '').replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[char]));
-      const excerpt = text => {
-        const sentence = String(text || '').split(/(?<=[.!?])\s+/)[0];
-        return sentence.length > 125 ? sentence.slice(0, 122).trimEnd() + '…' : sentence;
-      };
-      const categories = () => [...new Set(wines.map(wine => wine.category))];
-      const backButton = () => {
-        if (!tg || !tg.BackButton) return;
-        if (screen.name === 'home') tg.BackButton.hide();
-        else tg.BackButton.show();
-      };
-      function goHome() { screen = { name: 'home' }; render(); }
-      function render() {
-        if (tg) { tg.ready(); tg.expand(); }
-        backButton();
-        if (screen.name === 'home') {
-          const rows = categories().map(category => {
-            const count = wines.filter(wine => wine.category === category).length;
-            return `<button class="category-row" data-category="${esc(category)}"><span class="category-name">${esc(category)}</span><span class="category-meta">${count} ${count === 1 ? 'вино' : count < 5 ? 'вина' : 'вин'} <span class="category-arrow">↗</span></span></button>`;
-          }).join('');
-          app.innerHTML = `<header class="masthead"><span>Дача Сердюка</span><span class="place">Долина Дона · с 2003 года</span></header>
-            <section class="hero"><p class="eyebrow">Семейная винодельня</p><h1>Вино<br>с берегов<br>Дона.</h1><p class="hero-copy">Небольшое семейное хозяйство. Виноград, ручной труд и вино без спешки.</p><div class="hero-note">Усть-Донецкий район · хутор Каныгин</div></section>
-            <section aria-labelledby="wines-title"><div class="section-head"><h2 id="wines-title">Винная карта</h2><span>${wines.length} вин</span></div><div class="category-list">${rows}</div></section>
-            <section class="about-teaser"><p class="eyebrow">О хозяйстве</p><h2>Семейное дело у Дона</h2><p>Выращиваем местные и грузинские сорта и работаем с вином вручную, следуя характеру винограда и места.</p><button class="text-link" data-about>История винодельни <span aria-hidden="true">↗</span></button></section>
-            <footer class="footnote">Винная карта и рассказы о хозяйстве «Дача Сердюка»</footer>`;
-        } else if (screen.name === 'category') {
-          const products = wines.filter(wine => wine.category === screen.category);
-          const rows = products.map(wine => `<button class="wine-row" data-wine="${wine.id}"><img class="wine-thumb" src="${esc(wine.image)}" alt="" loading="lazy"><span class="wine-card-copy"><span class="eyebrow">${esc(wine.category)}</span><span class="wine-name">${esc(wine.name)}</span><span class="wine-blurb">${esc(excerpt(wine.aroma + ' ' + wine.taste))}</span></span><span class="row-arrow" aria-hidden="true">↗</span></button>`).join('');
-          app.innerHTML = `<header class="masthead"><span>Дача Сердюка</span><span class="place">Винная карта</span></header><button class="back" data-back>← Все категории</button><h1 class="view-title">${esc(screen.category)}</h1><p class="view-description">${products.length} ${products.length === 1 ? 'вино' : products.length < 5 ? 'вина' : 'вин'} из нашей винной карты</p><div class="wine-list">${rows}</div>`;
-        } else if (screen.name === 'wine') {
-          const wine = wines.find(item => item.id === screen.id);
-          if (!wine) { goHome(); return; }
-          app.innerHTML = `<header class="masthead"><span>Дача Сердюка</span><span class="place">${esc(wine.category)}</span></header><button class="back" data-back>← ${esc(wine.category)}</button><section class="detail-top"><img class="detail-image" src="${esc(wine.image)}" alt="Бутылка вина «${esc(wine.name)}»"><div class="detail-heading"><p class="eyebrow">${esc(wine.category)}</p><h1>${esc(wine.name)}</h1><p class="grape">${esc(wine.variety)}</p><p class="detail-note">${esc(wine.aging)}</p></div></section><section class="notes"><article class="note"><h2>Ароматика</h2><p>${esc(wine.aroma)}</p></article><article class="note"><h2>Вкус</h2><p>${esc(wine.taste)}</p></article><article class="note"><h2>К столу</h2><p>${esc(wine.pairing)}</p></article></section><footer class="footnote">Описание по материалам винодельни «Дача Сердюка»</footer>`;
-        } else if (screen.name === 'about') {
-          app.innerHTML = `<header class="masthead"><span>Дача Сердюка</span><span class="place">Долина Дона</span></header><button class="back" data-back>← На главную</button><section class="about-page"><p class="eyebrow">Наша история</p><h1>Семейная винодельня на Дону</h1><p class="about-lead">«Дача Сердюка» основана в 2003 году. Это семейное хозяйство, где отец и три сына вместе занимаются виноградом и вином.</p><article class="about-section"><h2>Место</h2><p>Виноградники находятся в Усть-Донецком районе, у хутора Каныгин. Их заложили в 2014 году. Два с половиной гектара песчаных и глинистых почв.</p><ul class="facts-list"><li>Сибирьковый</li><li>Красностоп Золотовский</li><li>Саперави</li><li>Каберне Совиньон</li><li>Ркацители</li></ul></article><article class="about-section"><h2>Работа в погребе</h2><p>Семейное производство, ручной труд и спонтанное брожение на диких дрожжах для красных и оранжевых вин. Вина не осветляют и не фильтруют; в презентации винодельни также заявлено, что консерванты, включая диоксид серы, не добавляются.</p></article><article class="about-section"><h2>Забота о степи</h2><p>По материалам презентации, 10 рублей с каждой бутылки направляются в проект «Живая природа степи».</p></article></section><footer class="footnote">Факты и описание — из презентации винодельни «Дача Сердюка».</footer>`;
-        }
-      }
-      app.addEventListener('click', event => {
-        const button = event.target.closest('button');
-        if (!button) return;
-        if (button.dataset.category) screen = { name: 'category', category: button.dataset.category };
-        else if (button.dataset.wine) screen = { name: 'wine', id: Number(button.dataset.wine) };
-        else if (button.hasAttribute('data-about')) screen = { name: 'about' };
-        else if (button.hasAttribute('data-back')) {
-          if (screen.name === 'wine') screen = { name: 'category', category: wines.find(wine => wine.id === screen.id)?.category || '' };
-          else goHome();
-        }
-        render();
-      });
-      if (tg && tg.BackButton) tg.BackButton.onClick(() => {
-        if (screen.name === 'wine') screen = { name: 'category', category: wines.find(wine => wine.id === screen.id)?.category || '' };
-        else goHome();
-        render();
-      });
-      fetch('./catalog.json').then(response => {
-        if (!response.ok) throw new Error('catalog unavailable');
-        return response.json();
-      }).then(data => {
-        if (!Array.isArray(data) || !data.length) throw new Error('catalog empty');
-        wines = data;
-        render();
-      }).catch(() => {
-        app.innerHTML = '<p class="state-message">Не удалось загрузить винную карту. Проверьте подключение и откройте страницу ещё раз.</p>';
-      });
-    })();
-  </script>
+  <script src="./app.js?v=checkout-1" defer></script>
 </body>
 </html>

@@ -12,14 +12,15 @@ from aiogram.fsm.context import FSMContext
 from aiogram.types import Message
 
 from config import Config
-from database import Database
+from database import STATUS_LABELS, Database
 from states.order import AddProductStates
 
 router = Router(name="admin")
+router.message.filter(F.chat.type == "private")
 
 
 def _is_admin(user_id: int, config: Config) -> bool:
-    return user_id in config.admin_ids
+    return user_id in config.team_ids
 
 
 @router.message(Command("admin"))
@@ -165,22 +166,37 @@ async def cmd_categories(message: Message, db: Database, config: Config) -> None
 
 
 @router.message(Command("orders_all"))
+@router.message(F.text == "📋 Заказы команды")
 async def cmd_orders_all(message: Message, db: Database, config: Config) -> None:
     if not _is_admin(message.from_user.id, config):
         return
-    orders = await db.list_orders(limit=20)
-    if not orders:
-        await message.answer("No orders yet.")
+    if message.chat.type != "private":
+        await message.answer("Заказы команды доступны в личном чате с ботом.")
         return
-    lines = ["📦 <b>Last orders</b>", ""]
-    for order in orders:
-        username = f"@{escape(order.username)}" if order.username else "—"
-        lines.append(
-            f"#{order.id} · {escape(order.created_at)} · {username}\n"
-            f"   {escape(order.full_name)} · {escape(order.phone)}\n"
-            f"   ${order.total:.2f} · <i>{escape(order.status)}</i>"
+    await show_team_orders(message, db)
+
+
+async def show_team_orders(message: Message, db: Database, page: int = 0) -> None:
+    from aiogram.utils.keyboard import InlineKeyboardBuilder
+
+    page = max(0, page)
+    orders = await db.list_orders(limit=11, offset=page * 10)
+    if not orders:
+        await message.answer("Заявок пока нет.")
+        return
+    builder = InlineKeyboardBuilder()
+    for order in orders[:10]:
+        builder.button(
+            text=f"#{order.id} · {order.full_name[:28]} · {order.total:.0f} ₽ · {STATUS_LABELS.get(order.status, order.status)}",
+            callback_data=f"ord_show:{order.id}",
         )
-    await message.answer("\n\n".join(lines))
+    if page:
+        builder.button(text="← Новее", callback_data=f"team_orders:{page - 1}")
+    if len(orders) > 10:
+        builder.button(text="Старее →", callback_data=f"team_orders:{page + 1}")
+    builder.button(text="Обновить список", callback_data=f"team_orders:{page}")
+    builder.adjust(1)
+    await message.answer(f"📋 <b>Заказы команды · страница {page + 1}</b>\nВыберите заявку для просмотра и смены статуса.", reply_markup=builder.as_markup())
 
 
 # ---- Add product wizard --------------------------------------------------

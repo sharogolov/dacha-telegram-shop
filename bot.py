@@ -16,7 +16,7 @@ import sys
 from aiogram import Bot, Dispatcher
 from aiogram.client.default import DefaultBotProperties
 from aiogram.enums import ParseMode
-from aiogram.fsm.storage.memory import MemoryStorage
+from aiogram.fsm.storage.memory import MemoryStorage, SimpleEventIsolation
 
 from config import config
 from database import Database
@@ -52,7 +52,7 @@ async def main() -> None:
         token=config.bot_token,
         default=DefaultBotProperties(parse_mode=ParseMode.HTML),
     )
-    dp = Dispatcher(storage=MemoryStorage())
+    dp = Dispatcher(storage=MemoryStorage(), events_isolation=SimpleEventIsolation())
 
     db = Database(config.db_path)
     await on_startup(db)
@@ -62,7 +62,7 @@ async def main() -> None:
     dp["config"] = config
 
     # Middlewares run for every update before handlers.
-    rate_limiter = RateLimitMiddleware(admin_ids=set(config.admin_ids))
+    rate_limiter = RateLimitMiddleware(admin_ids=config.team_ids)
     user_tracker = UserTrackingMiddleware()
     for observer in (dp.message, dp.callback_query, dp.inline_query):
         observer.middleware(user_tracker)

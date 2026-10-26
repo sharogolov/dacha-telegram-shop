@@ -5,6 +5,7 @@ Tables: categories, products, cart_items, orders, order_items.
 """
 from __future__ import annotations
 
+import asyncio
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -35,6 +36,11 @@ CREATE TABLE IF NOT EXISTS cart_items (
     PRIMARY KEY (user_id, product_id)
 );
 
+CREATE TABLE IF NOT EXISTS catalog_links (
+    sku TEXT PRIMARY KEY,
+    product_id INTEGER NOT NULL UNIQUE REFERENCES products(id) ON DELETE CASCADE
+);
+
 CREATE TABLE IF NOT EXISTS orders (
     id                  INTEGER PRIMARY KEY AUTOINCREMENT,
     user_id             INTEGER NOT NULL,
@@ -59,6 +65,13 @@ CREATE TABLE IF NOT EXISTS order_items (
     price       REAL NOT NULL,
     quantity    INTEGER NOT NULL,
     PRIMARY KEY (order_id, product_id)
+);
+
+CREATE TABLE IF NOT EXISTS webapp_submissions (
+    user_id INTEGER NOT NULL,
+    request_id TEXT NOT NULL,
+    order_id INTEGER NOT NULL REFERENCES orders(id),
+    PRIMARY KEY (user_id, request_id)
 );
 
 CREATE TABLE IF NOT EXISTS order_status_history (
@@ -119,11 +132,11 @@ ORDER_STATUSES: tuple[str, ...] = (
     "cancelled",
 )
 STATUS_LABELS: dict[str, str] = {
-    "new": "🆕 New",
-    "confirmed": "✅ Confirmed",
-    "shipping": "🚚 Shipping",
-    "delivered": "📬 Delivered",
-    "cancelled": "❌ Cancelled",
+    "new": "🆕 Новая заявка",
+    "confirmed": "✅ Собираем",
+    "shipping": "🚚 Передано в доставку",
+    "delivered": "📬 Получено",
+    "cancelled": "❌ Отменено",
 }
 # Allowed transitions — protects history from going backwards or skipping
 # cancelled. From `new` you can confirm or cancel; from `confirmed` ship or
@@ -226,6 +239,7 @@ class Database:
     def __init__(self, path: Path):
         self.path = path
         self._conn: aiosqlite.Connection | None = None
+        self.order_lock = asyncio.Lock()
 
     async def connect(self) -> None:
         self._conn = await aiosqlite.connect(self.path)
@@ -317,6 +331,21 @@ class Database:
         async with self.conn.execute(query, (product_id,)) as cur:
             row = await cur.fetchone()
         return _row_to_product(row) if row else None
+
+    async def get_catalog_product(self, sku: str, *, include_out_of_stock: bool = False) -> Product | None:
+        async with self.conn.execute(
+            "SELECT product_id FROM catalog_links WHERE sku = ?", (sku,)
+        ) as cur:
+            row = await cur.fetchone()
+        return await self.get_product(row['product_id'], include_out_of_stock=include_out_of_stock) if row else None
+
+    async def get_submission(self, user_id: int, request_id: str) -> OrderSummary | None:
+        async with self.conn.execute(
+            "SELECT order_id FROM webapp_submissions WHERE user_id = ? AND request_id = ?",
+            (user_id, request_id),
+        ) as cur:
+            row = await cur.fetchone()
+        return await self.get_order(row['order_id']) if row else None
 
     async def add_product(
         self,
@@ -475,8 +504,12 @@ class Database:
         discount_amount: float = 0.0,
         payment_charge_id: str | None = None,
         payment_provider: str | None = None,
+        items: list[CartItem] | None = None,
+        request_id: str | None = None,
     ) -> OrderSummary:
-        items = await self.get_cart(user_id)
+        from_cart = items is None
+        if items is None:
+            items = await self.get_cart(user_id)
         if not items:
             raise ValueError("Cart is empty")
         subtotal = round(sum(i.subtotal for i in items), 2)
@@ -519,7 +552,13 @@ class Database:
                 "UPDATE promo_codes SET used_count = used_count + 1 WHERE code = ?",
                 (promo_code.upper(),),
             )
-        await self.conn.execute("DELETE FROM cart_items WHERE user_id = ?", (user_id,))
+        if request_id:
+            await self.conn.execute(
+                "INSERT INTO webapp_submissions (user_id, request_id, order_id) VALUES (?, ?, ?)",
+                (user_id, request_id, order_id),
+            )
+        if from_cart:
+            await self.conn.execute("DELETE FROM cart_items WHERE user_id = ?", (user_id,))
         await self.conn.commit()
 
         return OrderSummary(
@@ -544,9 +583,9 @@ class Database:
         results = await self._fetch_orders(limit=1, order_id=order_id)
         return results[0] if results else None
 
-    async def list_orders(self, limit: int = 20) -> list[OrderSummary]:
+    async def list_orders(self, limit: int = 20, offset: int = 0) -> list[OrderSummary]:
         """All orders, newest first. Admin-only — uses a single JOIN to avoid N+1."""
-        return await self._fetch_orders(limit=limit)
+        return await self._fetch_orders(limit=limit, offset=offset)
 
     async def list_user_orders(self, user_id: int, limit: int = 20) -> list[OrderSummary]:
         """Orders belonging to a specific user. Always filter by user_id, never by username."""
@@ -558,6 +597,7 @@ class Database:
         *,
         user_id: int | None = None,
         order_id: int | None = None,
+        offset: int = 0,
     ) -> list[OrderSummary]:
         # Build the inner subquery that picks the most recent order ids for the
         # requested scope. Three literal branches — no user data is interpolated.
@@ -565,8 +605,8 @@ class Database:
             inner_subquery = "SELECT id FROM orders WHERE id = ?"
             params: tuple = (order_id,)
         elif user_id is None:
-            inner_subquery = "SELECT id FROM orders ORDER BY id DESC LIMIT ?"
-            params = (limit,)
+            inner_subquery = "SELECT id FROM orders ORDER BY id DESC LIMIT ? OFFSET ?"
+            params = (limit, offset)
         else:
             inner_subquery = "SELECT id FROM orders WHERE user_id = ? ORDER BY id DESC LIMIT ?"
             params = (user_id, limit)
@@ -663,9 +703,12 @@ class Database:
                 f"Cannot move from {order.status!r} to {new_status!r}. "
                 f"Allowed: {sorted(STATUS_TRANSITIONS.get(order.status, frozenset()))}"
             )
-        await self.conn.execute(
-            "UPDATE orders SET status = ? WHERE id = ?", (new_status, order_id)
+        result = await self.conn.execute(
+            "UPDATE orders SET status = ? WHERE id = ? AND status = ?",
+            (new_status, order_id, order.status),
         )
+        if not result.rowcount:
+            return False, "Статус уже изменил другой сотрудник. Обновите карточку."
         await self.conn.execute(
             "INSERT INTO order_status_history (order_id, status, note, changed_by) "
             "VALUES (?, ?, ?, ?)",
