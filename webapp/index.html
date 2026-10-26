@@ -1,299 +1,40 @@
-<!DOCTYPE html>
-<html lang="en">
+<!doctype html>
+<html lang="ru">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Дача Сердюка — Магазин</title>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Дача Сердюка — магазин</title>
   <script src="https://telegram.org/js/telegram-web-app.js"></script>
-  <script src="https://cdn.tailwindcss.com"></script>
-  <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
-  <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
-  <script crossorigin src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
   <style>
-    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
-    /* Use Telegram's native theme variables so the app feels integrated. */
-    :root {
-      --tg-bg: var(--tg-theme-bg-color, #ffffff);
-      --tg-text: var(--tg-theme-text-color, #000000);
-      --tg-hint: var(--tg-theme-hint-color, #999999);
-      --tg-link: var(--tg-theme-link-color, #2481cc);
-      --tg-button: var(--tg-theme-button-color, #2481cc);
-      --tg-button-text: var(--tg-theme-button-text-color, #ffffff);
-      --tg-secondary-bg: var(--tg-theme-secondary-bg-color, #f0f0f0);
-    }
-    body { background: var(--tg-bg); color: var(--tg-text); }
-    .card { background: var(--tg-secondary-bg); }
-    .btn-primary { background: var(--tg-button); color: var(--tg-button-text); }
+    :root { color-scheme: light dark; --bg: var(--tg-theme-bg-color,#fff); --text: var(--tg-theme-text-color,#111); --muted: var(--tg-theme-hint-color,#777); --card: var(--tg-theme-secondary-bg-color,#f2f2f2); --button: var(--tg-theme-button-color,#2481cc); --button-text: var(--tg-theme-button-text-color,#fff); }
+    * { box-sizing: border-box; } body { margin:0; background:var(--bg); color:var(--text); font:16px -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif; }
+    main { max-width:560px; margin:auto; padding:20px 16px 100px; } h1 { margin:0 0 6px; font-size:27px; } h2 { font-size:21px; margin:0 0 14px; } p { line-height:1.45; } .muted { color:var(--muted); }
+    .top { text-align:center; margin:8px 0 24px; } .grid { display:grid; gap:10px; } button { border:0; border-radius:14px; padding:14px; font:inherit; color:var(--text); background:var(--card); text-align:left; cursor:pointer; } .primary { width:100%; color:var(--button-text); background:var(--button); text-align:center; font-weight:600; } .row { display:flex; align-items:center; justify-content:space-between; gap:12px; } .price { color:var(--button); font-weight:700; white-space:nowrap; } .back { padding:5px 0 14px; background:transparent; color:var(--button); } .product { padding:16px; } .product h3 { margin:0 0 8px; } .product button { margin-top:12px; text-align:center; width:100%; } .qty { display:flex; align-items:center; gap:12px; margin-top:12px; } .qty button { width:42px; padding:8px; text-align:center; } .empty { text-align:center; padding:28px 8px; }
   </style>
 </head>
-<body class="min-h-screen">
-  <div id="root"></div>
-
-  <script type="text/babel" data-presets="react">
-const { useState, useEffect, useMemo } = React;
-
-// ---------------------------------------------------------------------------
-// «Дача Сердюка» — каталог Telegram Mini App.
-// On checkout it hands the cart back to the bot via Telegram.WebApp.sendData.
-// The bot's web_app_data handler reads it and resumes the normal order flow.
-// ---------------------------------------------------------------------------
-
-const tg = window.Telegram && window.Telegram.WebApp;
-
-function App() {
-  // Lazy initialiser — reads window.__CATALOG__ at mount, AFTER bootstrap()
-  // has fetched catalog.json. Avoids the race where module-level `const`
-  // captures an empty array before the fetch resolves.
-  const [CATALOG] = useState(() => window.__CATALOG__ || []);
-  const [cart, setCart] = useState({});      // {productId: quantity}
-  const [activeCat, setActiveCat] = useState(null);
-  const [selectedProduct, setSelectedProduct] = useState(null);
-  const [view, setView] = useState("home"); // home | category | product | cart
-
-  // Initialise Telegram WebApp.
-  useEffect(() => {
-    if (!tg) return;
-    tg.ready();
-    tg.expand();
-    tg.MainButton.setParams({ text: "Открыть корзину", color: tg.themeParams.button_color });
-  }, []);
-
-  // Aggregate cart numbers.
-  const cartCount = useMemo(
-    () => Object.values(cart).reduce((s, q) => s + q, 0),
-    [cart]
-  );
-  const cartSubtotal = useMemo(() => {
-    return Object.entries(cart).reduce((sum, [pid, qty]) => {
-      const product = CATALOG.find(p => p.id === Number(pid));
-      return sum + (product ? product.price * qty : 0);
-    }, 0);
-  }, [cart]);
-
-  // Telegram MainButton — context-sensitive across screens.
-  useEffect(() => {
-    if (!tg) return;
-    if (view === "cart" && cartCount > 0) {
-      tg.MainButton.setText(`Отправить заявку — ${cartSubtotal.toFixed(0)} ₽`);
-      tg.MainButton.show();
-      const onClick = () => {
-        const items = Object.entries(cart).map(([pid, qty]) => ({
-          id: Number(pid),
-          quantity: qty,
-        }));
-        tg.sendData(JSON.stringify({ items, subtotal: cartSubtotal }));
-        tg.close();
-      };
-      tg.MainButton.onClick(onClick);
-      return () => tg.MainButton.offClick(onClick);
-    } else if (cartCount > 0) {
-      tg.MainButton.setText(`Корзина (${cartCount})`);
-      tg.MainButton.show();
-      const onClick = () => setView("cart");
-      tg.MainButton.onClick(onClick);
-      return () => tg.MainButton.offClick(onClick);
+<body><main id="app"><p class="empty">Загружаем каталог…</p></main>
+<script>
+(() => {
+  const tg = window.Telegram && window.Telegram.WebApp;
+  const app = document.getElementById('app'); let catalog = []; let cart = {}; let view = 'home'; let category = null;
+  const rub = n => `${Number(n).toFixed(0)} ₽`; const esc = s => String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  const count = () => Object.values(cart).reduce((a,b) => a+b, 0); const total = () => Object.entries(cart).reduce((s,[id,q]) => s + (catalog.find(p=>p.id===Number(id))?.price||0)*q, 0);
+  function render() {
+    if (tg) { tg.ready(); tg.expand(); tg.MainButton.hide(); }
+    if (view === 'home') {
+      const cats = [...new Map(catalog.map(p => [p.category, {name:p.category, emoji:p.emoji, count:0}])).values()]; cats.forEach(c => c.count = catalog.filter(p=>p.category===c.name).length);
+      app.innerHTML = `<section class="top"><h1>🍷 Дача Сердюка</h1><p class="muted">Вино для дома и добрых встреч.</p></section><div class="grid">${cats.map(c=>`<button class="row" data-cat="${esc(c.name)}"><span>${c.emoji} ${esc(c.name)}</span><span class="muted">${c.count} →</span></button>`).join('')}</div><p><button class="primary" data-cart>🧺 Корзина${count()?` (${count()})`:''}</button></p>`;
+    } else if (view === 'category') {
+      const products = catalog.filter(p=>p.category===category); app.innerHTML = `<button class="back" data-home>← Назад</button><h2>${esc(category)}</h2><div class="grid">${products.map(p=>`<button class="row" data-product="${p.id}"><span>${esc(p.name)}</span><span class="price">${rub(p.price)}</span></button>`).join('')}</div>`;
+    } else if (view === 'product') {
+      const p = catalog.find(x=>x.id===Number(category)); const q = cart[p.id]||0; app.innerHTML = `<button class="back" data-category="${esc(p.category)}">← Назад</button><section class="product"><h2>${esc(p.name)}</h2><div class="price">${rub(p.price)}</div><p>${esc(p.description)}</p>${q?`<div class="qty"><button data-dec="${p.id}">−</button><b>В корзине: ${q}</b><button data-inc="${p.id}">+</button></div>`:`<button class="primary" data-inc="${p.id}">➕ В корзину</button>`}</section>`;
     } else {
-      tg.MainButton.hide();
-    }
-  }, [view, cartCount, cartSubtotal, cart]);
-
-  // Categories: derive from catalog.
-  const categories = useMemo(() => {
-    const seen = new Map();
-    for (const p of CATALOG) {
-      if (!seen.has(p.category)) {
-        seen.set(p.category, { name: p.category, emoji: p.emoji, count: 0 });
-      }
-      seen.get(p.category).count += 1;
-    }
-    return Array.from(seen.values());
-  }, []);
-
-  const addToCart = (productId) => {
-    setCart(prev => ({ ...prev, [productId]: (prev[productId] || 0) + 1 }));
-    if (tg) tg.HapticFeedback.impactOccurred("light");
-  };
-  const decFromCart = (productId) => {
-    setCart(prev => {
-      const q = (prev[productId] || 0) - 1;
-      const next = { ...prev };
-      if (q <= 0) delete next[productId]; else next[productId] = q;
-      return next;
-    });
-  };
-
-  return (
-    <div className="max-w-md mx-auto p-4 pb-24">
-      {view !== "home" && (
-        <button
-          className="text-[var(--tg-link)] mb-4 text-sm flex items-center gap-1"
-          onClick={() => {
-            if (view === "product") setView("category");
-            else if (view === "cart") setView("home");
-            else setView("home");
-          }}
-        >
-          ← Назад
-        </button>
-      )}
-
-      {view === "home" && (
-        <div>
-          <div className="text-center mb-6">
-            <h1 className="text-2xl font-bold mb-2">🍷 Дача Сердюка</h1>
-            <p className="text-[var(--tg-hint)] text-sm">Вино для дома и добрых встреч.</p>
-          </div>
-          {categories.length === 0 ? (
-            <p className="text-center text-[var(--tg-hint)] py-8">
-              Загружаем каталог…
-            </p>
-          ) : (
-            <div className="space-y-2">
-              {categories.map(cat => (
-                <button
-                  key={cat.name}
-                  className="card w-full p-4 rounded-xl flex justify-between items-center text-left"
-                  onClick={() => { setActiveCat(cat.name); setView("category"); }}
-                >
-                  <span className="font-medium">{cat.emoji} {cat.name}</span>
-                  <span className="text-[var(--tg-hint)] text-sm">{cat.count} →</span>
-                </button>
-              ))}
-            </div>
-          )}
-          <button
-            className="btn-primary mt-6 w-full p-3 rounded-xl font-medium"
-            onClick={() => setView("cart")}
-          >
-            🧺 Корзина{cartCount > 0 && ` (${cartCount})`}
-          </button>
-        </div>
-      )}
-
-      {view === "category" && (
-        <div>
-          <h2 className="text-xl font-bold mb-4">{activeCat}</h2>
-          <div className="space-y-2">
-            {CATALOG.filter(p => p.category === activeCat).map(p => (
-              <button
-                key={p.id}
-                className="card w-full p-4 rounded-xl flex justify-between items-center text-left"
-                onClick={() => { setSelectedProduct(p); setView("product"); }}
-              >
-                <span className="font-medium">{p.name}</span>
-                <span className="text-[var(--tg-link)] font-semibold">{p.price.toFixed(0)} ₽</span>
-              </button>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {view === "product" && selectedProduct && (
-        <div>
-          {selectedProduct.photo && (
-            <img
-              src={selectedProduct.photo}
-              alt={selectedProduct.name}
-              className="w-full rounded-xl mb-4"
-              onError={(e) => e.target.style.display = "none"}
-            />
-          )}
-          <h2 className="text-xl font-bold mb-2">{selectedProduct.name}</h2>
-          <p className="text-2xl font-bold text-[var(--tg-link)] mb-3">
-            {selectedProduct.price.toFixed(0)} ₽
-          </p>
-          <p className="text-sm leading-relaxed mb-6">{selectedProduct.description}</p>
-
-          <div className="flex items-center gap-3">
-            {(cart[selectedProduct.id] || 0) > 0 ? (
-              <>
-                <button
-                  className="card w-12 h-12 rounded-xl text-xl font-bold"
-                  onClick={() => decFromCart(selectedProduct.id)}
-                >−</button>
-                <span className="font-bold text-lg">В корзине: {cart[selectedProduct.id]}</span>
-                <button
-                  className="btn-primary w-12 h-12 rounded-xl text-xl font-bold"
-                  onClick={() => addToCart(selectedProduct.id)}
-                >+</button>
-              </>
-            ) : (
-              <button
-                className="btn-primary w-full p-3 rounded-xl font-medium"
-                onClick={() => addToCart(selectedProduct.id)}
-              >
-                ➕ В корзину
-              </button>
-            )}
-          </div>
-        </div>
-      )}
-
-      {view === "cart" && (
-        <div>
-          <h2 className="text-xl font-bold mb-4">🧺 Your Cart</h2>
-          {cartCount === 0 ? (
-            <p className="text-[var(--tg-hint)] text-center py-8">
-              Корзина пуста. Выберите вино в каталоге.
-            </p>
-          ) : (
-            <div className="space-y-2">
-              {Object.entries(cart).map(([pid, qty]) => {
-                const p = CATALOG.find(x => x.id === Number(pid));
-                if (!p) return null;
-                return (
-                  <div key={pid} className="card p-3 rounded-xl">
-                    <div className="flex justify-between items-center mb-2">
-                      <span className="font-medium text-sm">{p.name}</span>
-                      <span className="font-bold">{(p.price * qty).toFixed(0)} ₽</span>
-                    </div>
-                    <div className="flex items-center gap-2 text-sm">
-                      <button
-                        className="card w-8 h-8 rounded"
-                        onClick={() => decFromCart(p.id)}
-                      >−</button>
-                      <span>{qty}</span>
-                      <button
-                        className="btn-primary w-8 h-8 rounded"
-                        onClick={() => addToCart(p.id)}
-                      >+</button>
-                      <span className="text-[var(--tg-hint)] ml-2">× {p.price.toFixed(0)} ₽</span>
-                    </div>
-                  </div>
-                );
-              })}
-              <div className="card p-4 rounded-xl mt-4">
-                <div className="flex justify-between font-bold text-lg">
-                  <span>Subtotal:</span>
-                  <span>{cartSubtotal.toFixed(0)} ₽</span>
-                </div>
-                <p className="text-xs text-[var(--tg-hint)] mt-2">
-                  Нажмите кнопку внизу, чтобы отправить заявку боту
-                  for checkout.
-                </p>
-              </div>
-            </div>
-          )}
-        </div>
-      )}
-    </div>
-  );
-}
-
-// Bootstrap: ensure catalog data is available before mounting the app.
-async function bootstrap() {
-  if (!window.__CATALOG__ || window.__CATALOG__.length === 0) {
-    try {
-      const r = await fetch("./catalog.json");
-      if (r.ok) window.__CATALOG__ = await r.json();
-    } catch (e) {
-      console.warn("catalog.json not found", e);
+      const lines = Object.entries(cart).map(([id,q])=>{const p=catalog.find(x=>x.id===Number(id)); return `<section class="product"><div class="row"><span>${esc(p.name)} × ${q}</span><b class="price">${rub(p.price*q)}</b></div><div class="qty"><button data-dec="${p.id}">−</button><span>${q}</span><button data-inc="${p.id}">+</button></div></section>`}).join(''); app.innerHTML = `<button class="back" data-home>← Каталог</button><h2>🧺 Корзина</h2>${lines||'<p class="empty muted">Корзина пуста. Выберите вино в каталоге.</p>'}${lines?`<section class="product"><div class="row"><b>Итого</b><b class="price">${rub(total())}</b></div><button class="primary" data-send>Отправить заявку</button></section>`:''>`;
+      if (tg && lines) { tg.MainButton.setText(`Отправить заявку — ${rub(total())}`); tg.MainButton.show(); tg.MainButton.onClick(send); }
     }
   }
-  const root = ReactDOM.createRoot(document.getElementById("root"));
-  root.render(<App />);
-}
-bootstrap();
-  </script>
-</body>
-</html>
+  function send() { if (!count()) return; tg ? (tg.sendData(JSON.stringify({items:Object.entries(cart).map(([id,quantity])=>({id:Number(id),quantity}))})), tg.close()) : alert('Откройте магазин внутри Telegram.'); }
+  app.addEventListener('click', e => { const b=e.target.closest('button'); if(!b)return; if(b.dataset.cat){category=b.dataset.cat;view='category';} else if(b.dataset.product){category=b.dataset.product;view='product';} else if(b.dataset.category){category=b.dataset.category;view='category';} else if(b.dataset.home){view='home';} else if(b.dataset.cart){view='cart';} else if(b.dataset.inc){cart[b.dataset.inc]=(cart[b.dataset.inc]||0)+1;} else if(b.dataset.dec){cart[b.dataset.dec]=(cart[b.dataset.dec]||0)-1;if(cart[b.dataset.dec]<=0)delete cart[b.dataset.dec];} else if(b.dataset.send){send();} render(); });
+  fetch('./catalog.json').then(r=>r.json()).then(data=>{catalog=data;render();}).catch(()=>{app.innerHTML='<p class="empty">Не удалось загрузить каталог.</p>';});
+})();
+</script></body></html>
