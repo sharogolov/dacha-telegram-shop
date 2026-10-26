@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Roastline Coffee — Shop</title>
+  <title>Дача Сердюка — Магазин</title>
   <script src="https://telegram.org/js/telegram-web-app.js"></script>
   <script src="https://cdn.tailwindcss.com"></script>
   <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
@@ -33,7 +33,7 @@
 const { useState, useEffect, useMemo } = React;
 
 // ---------------------------------------------------------------------------
-// Roastline Coffee — Telegram WebApp catalog.
+// «Дача Сердюка» — каталог Telegram Mini App.
 // On checkout it hands the cart back to the bot via Telegram.WebApp.sendData.
 // The bot's web_app_data handler reads it and resumes the normal order flow.
 // ---------------------------------------------------------------------------
@@ -55,7 +55,7 @@ function App() {
     if (!tg) return;
     tg.ready();
     tg.expand();
-    tg.MainButton.setParams({ text: "Open Cart", color: tg.themeParams.button_color });
+    tg.MainButton.setParams({ text: "Открыть корзину", color: tg.themeParams.button_color });
   }, []);
 
   // Aggregate cart numbers.
@@ -74,7 +74,7 @@ function App() {
   useEffect(() => {
     if (!tg) return;
     if (view === "cart" && cartCount > 0) {
-      tg.MainButton.setText(`Send order — $${cartSubtotal.toFixed(2)}`);
+      tg.MainButton.setText(`Отправить заявку — ${cartSubtotal.toFixed(0)} ₽`);
       tg.MainButton.show();
       const onClick = () => {
         const items = Object.entries(cart).map(([pid, qty]) => ({
@@ -87,7 +87,7 @@ function App() {
       tg.MainButton.onClick(onClick);
       return () => tg.MainButton.offClick(onClick);
     } else if (cartCount > 0) {
-      tg.MainButton.setText(`Open Cart (${cartCount})`);
+      tg.MainButton.setText(`Корзина (${cartCount})`);
       tg.MainButton.show();
       const onClick = () => setView("cart");
       tg.MainButton.onClick(onClick);
@@ -133,19 +133,19 @@ function App() {
             else setView("home");
           }}
         >
-          ← Back
+          ← Назад
         </button>
       )}
 
       {view === "home" && (
         <div>
           <div className="text-center mb-6">
-            <h1 className="text-2xl font-bold mb-2">☕ Roastline Coffee</h1>
-            <p className="text-[var(--tg-hint)] text-sm">Specialty coffee, delivered.</p>
+            <h1 className="text-2xl font-bold mb-2">🍷 Дача Сердюка</h1>
+            <p className="text-[var(--tg-hint)] text-sm">Вино для дома и добрых встреч.</p>
           </div>
           {categories.length === 0 ? (
             <p className="text-center text-[var(--tg-hint)] py-8">
-              Loading catalog…
+              Загружаем каталог…
             </p>
           ) : (
             <div className="space-y-2">
@@ -165,7 +165,7 @@ function App() {
             className="btn-primary mt-6 w-full p-3 rounded-xl font-medium"
             onClick={() => setView("cart")}
           >
-            🧺 View Cart{cartCount > 0 && ` (${cartCount})`}
+            🧺 Корзина{cartCount > 0 && ` (${cartCount})`}
           </button>
         </div>
       )}
@@ -181,7 +181,7 @@ function App() {
                 onClick={() => { setSelectedProduct(p); setView("product"); }}
               >
                 <span className="font-medium">{p.name}</span>
-                <span className="text-[var(--tg-link)] font-semibold">${p.price.toFixed(2)}</span>
+                <span className="text-[var(--tg-link)] font-semibold">{p.price.toFixed(0)} ₽</span>
               </button>
             ))}
           </div>
@@ -200,7 +200,7 @@ function App() {
           )}
           <h2 className="text-xl font-bold mb-2">{selectedProduct.name}</h2>
           <p className="text-2xl font-bold text-[var(--tg-link)] mb-3">
-            ${selectedProduct.price.toFixed(2)}
+            {selectedProduct.price.toFixed(0)} ₽
           </p>
           <p className="text-sm leading-relaxed mb-6">{selectedProduct.description}</p>
 
@@ -211,7 +211,7 @@ function App() {
                   className="card w-12 h-12 rounded-xl text-xl font-bold"
                   onClick={() => decFromCart(selectedProduct.id)}
                 >−</button>
-                <span className="font-bold text-lg">{cart[selectedProduct.id]} in cart</span>
+                <span className="font-bold text-lg">В корзине: {cart[selectedProduct.id]}</span>
                 <button
                   className="btn-primary w-12 h-12 rounded-xl text-xl font-bold"
                   onClick={() => addToCart(selectedProduct.id)}
@@ -222,7 +222,7 @@ function App() {
                 className="btn-primary w-full p-3 rounded-xl font-medium"
                 onClick={() => addToCart(selectedProduct.id)}
               >
-                ➕ Add to cart
+                ➕ В корзину
               </button>
             )}
           </div>
@@ -234,7 +234,7 @@ function App() {
           <h2 className="text-xl font-bold mb-4">🧺 Your Cart</h2>
           {cartCount === 0 ? (
             <p className="text-[var(--tg-hint)] text-center py-8">
-              Cart is empty. Browse the catalog to add coffee.
+              Корзина пуста. Выберите вино в каталоге.
             </p>
           ) : (
             <div className="space-y-2">
@@ -245,7 +245,7 @@ function App() {
                   <div key={pid} className="card p-3 rounded-xl">
                     <div className="flex justify-between items-center mb-2">
                       <span className="font-medium text-sm">{p.name}</span>
-                      <span className="font-bold">${(p.price * qty).toFixed(2)}</span>
+                      <span className="font-bold">{(p.price * qty).toFixed(0)} ₽</span>
                     </div>
                     <div className="flex items-center gap-2 text-sm">
                       <button
@@ -257,7 +257,7 @@ function App() {
                         className="btn-primary w-8 h-8 rounded"
                         onClick={() => addToCart(p.id)}
                       >+</button>
-                      <span className="text-[var(--tg-hint)] ml-2">× ${p.price.toFixed(2)}</span>
+                      <span className="text-[var(--tg-hint)] ml-2">× {p.price.toFixed(0)} ₽</span>
                     </div>
                   </div>
                 );
@@ -265,10 +265,10 @@ function App() {
               <div className="card p-4 rounded-xl mt-4">
                 <div className="flex justify-between font-bold text-lg">
                   <span>Subtotal:</span>
-                  <span>${cartSubtotal.toFixed(2)}</span>
+                  <span>{cartSubtotal.toFixed(0)} ₽</span>
                 </div>
                 <p className="text-xs text-[var(--tg-hint)] mt-2">
-                  Tap the button at the bottom to send your order to the bot
+                  Нажмите кнопку внизу, чтобы отправить заявку боту
                   for checkout.
                 </p>
               </div>
