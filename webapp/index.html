@@ -29,7 +29,9 @@
     } else if (view === 'product') {
       const p = catalog.find(x=>x.id===Number(category)); const q = cart[p.id]||0; app.innerHTML = `<button class="back" data-category="${esc(p.category)}">← Назад</button><section class="product"><h2>${esc(p.name)}</h2><div class="price">${rub(p.price)}</div><p>${esc(p.description)}</p>${q?`<div class="qty"><button data-dec="${p.id}">−</button><b>В корзине: ${q}</b><button data-inc="${p.id}">+</button></div>`:`<button class="primary" data-inc="${p.id}">➕ В корзину</button>`}</section>`;
     } else {
-      const lines = Object.entries(cart).map(([id,q])=>{const p=catalog.find(x=>x.id===Number(id)); return `<section class="product"><div class="row"><span>${esc(p.name)} × ${q}</span><b class="price">${rub(p.price*q)}</b></div><div class="qty"><button data-dec="${p.id}">−</button><span>${q}</span><button data-inc="${p.id}">+</button></div></section>`}).join(''); app.innerHTML = `<button class="back" data-home>← Каталог</button><h2>🧺 Корзина</h2>${lines||'<p class="empty muted">Корзина пуста. Выберите вино в каталоге.</p>'}${lines?`<section class="product"><div class="row"><b>Итого</b><b class="price">${rub(total())}</b></div><button class="primary" data-send>Отправить заявку</button></section>`:''>`;
+      const lines = Object.entries(cart).map(([id,q])=>{const p=catalog.find(x=>x.id===Number(id)); return `<section class="product"><div class="row"><span>${esc(p.name)} × ${q}</span><b class="price">${rub(p.price*q)}</b></div><div class="qty"><button data-dec="${p.id}">−</button><span>${q}</span><button data-inc="${p.id}">+</button></div></section>`}).join('');
+      const checkout = lines ? `<section class="product"><div class="row"><b>Итого</b><b class="price">${rub(total())}</b></div><button class="primary" data-send>Отправить заявку</button></section>` : '';
+      app.innerHTML = `<button class="back" data-home>← Каталог</button><h2>🧺 Корзина</h2>${lines || '<p class="empty muted">Корзина пуста. Выберите вино в каталоге.</p>'}${checkout}`;
       if (tg && lines) { tg.MainButton.setText(`Отправить заявку — ${rub(total())}`); tg.MainButton.show(); tg.MainButton.onClick(send); }
     }
   }
