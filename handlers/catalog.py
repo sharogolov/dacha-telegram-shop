@@ -25,7 +25,7 @@ def _format_product(product: Product) -> str:
     return (
         f"<b>{escape(product.name)}</b>\n\n"
         f"{escape(product.description)}\n\n"
-        f"💵 <b>${product.price:.2f}</b>"
+        f"💵 <b>{product.price:.0f} ₽</b>"
     )
 
 

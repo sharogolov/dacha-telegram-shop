@@ -29,6 +29,8 @@ def _photo_url(asset_path: str) -> str:
         return ""
     if asset_path.startswith(("http://", "https://")):
         return asset_path
+    if asset_path.startswith("photos/"):
+        return asset_path
     if not PHOTO_URL_PREFIX:
         return ""
     # asset_path is like "assets/photos/01_espresso.jpg"
