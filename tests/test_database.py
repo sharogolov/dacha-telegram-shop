@@ -42,6 +42,15 @@ async def test_get_product_filters_out_of_stock(seeded_db):
     assert await seeded_db.get_product(1, include_out_of_stock=True) is not None
 
 
+@pytest.mark.asyncio
+async def test_staff_can_change_price_and_availability(seeded_db):
+    assert await seeded_db.update_product_price(1, 1777) is True
+    assert (await seeded_db.get_product(1, include_out_of_stock=True)).price == 1777
+    assert await seeded_db.update_product_availability(1, False) is True
+    assert await seeded_db.get_product(1) is None
+    assert await seeded_db.update_product_availability(9999, True) is False
+
+
 # ─── Cart operations ─────────────────────────────────────────────────────
 
 @pytest.mark.asyncio

@@ -7,7 +7,7 @@ from __future__ import annotations
 from html import escape
 
 from aiogram import F, Router
-from aiogram.filters import Command
+from aiogram.filters import Command, CommandObject
 from aiogram.fsm.context import FSMContext
 from aiogram.types import Message
 
@@ -32,6 +32,9 @@ async def cmd_admin(message: Message, config: Config) -> None:
         "<b>Catalog</b>\n"
         "/categories — list categories\n"
         "/add_product — add a new product\n"
+        "/products — все товары и наличие\n"
+        "/set_price <id> <цена> — изменить цену\n"
+        "/set_stock <id> <on|off> — изменить наличие\n"
         "\n<b>Orders</b>\n"
         "/orders_all — last 20 orders\n"
         "/order &lt;id&gt; — order detail with status buttons\n"
@@ -43,6 +46,60 @@ async def cmd_admin(message: Message, config: Config) -> None:
         "/stats — sales overview (revenue, top products, status breakdown)\n"
         "\n/cancel — abort the current admin action"
     )
+
+
+@router.message(Command("products"))
+async def cmd_products(message: Message, db: Database, config: Config) -> None:
+    if not _is_admin(message.from_user.id, config):
+        return
+    products = await db.list_all_products()
+    if not products:
+        await message.answer("Каталог пуст.")
+        return
+    lines = ["<b>Товары</b>"]
+    for product in products:
+        stock = "✅ В наличии" if product.in_stock else "⛔ Закончилось"
+        lines.append(f"<code>#{product.id}</code> {escape(product.name)} — {product.price:.0f} ₽ · {stock}")
+    await message.answer("\n".join(lines))
+
+
+@router.message(Command("set_price"))
+async def cmd_set_price(message: Message, command: CommandObject, db: Database, config: Config) -> None:
+    if not _is_admin(message.from_user.id, config):
+        return
+    parts = (command.args or "").split()
+    if len(parts) != 2:
+        await message.answer("Формат: /set_price <id> <цена>")
+        return
+    try:
+        product_id, price = int(parts[0]), float(parts[1].replace(",", "."))
+    except ValueError:
+        await message.answer("ID и цена должны быть числами.")
+        return
+    if await db.update_product_price(product_id, price):
+        await message.answer(f"✅ Цена товара #{product_id}: {price:.0f} ₽")
+    else:
+        await message.answer("Товар не найден или цена некорректна.")
+
+
+@router.message(Command("set_stock"))
+async def cmd_set_stock(message: Message, command: CommandObject, db: Database, config: Config) -> None:
+    if not _is_admin(message.from_user.id, config):
+        return
+    parts = (command.args or "").split()
+    if len(parts) != 2 or parts[1].lower() not in {"on", "off"}:
+        await message.answer("Формат: /set_stock <id> <on|off>")
+        return
+    try:
+        product_id = int(parts[0])
+    except ValueError:
+        await message.answer("ID товара должен быть числом.")
+        return
+    in_stock = parts[1].lower() == "on"
+    if await db.update_product_availability(product_id, in_stock):
+        await message.answer(f"✅ Товар #{product_id}: {'в наличии' if in_stock else 'закончилось'}")
+    else:
+        await message.answer("Товар не найден.")
 
 
 @router.message(Command("stats"))

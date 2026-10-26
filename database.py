@@ -292,6 +292,15 @@ class Database:
             rows = await cur.fetchall()
         return [_row_to_product(r) for r in rows]
 
+    async def list_all_products(self) -> list[Product]:
+        """Return the full catalog for the staff panel, including sold-out items."""
+        async with self.conn.execute(
+            "SELECT id, category_id, name, description, price, photo_url, in_stock "
+            "FROM products ORDER BY id"
+        ) as cur:
+            rows = await cur.fetchall()
+        return [_row_to_product(r) for r in rows]
+
     async def get_product(
         self, product_id: int, *, include_out_of_stock: bool = False
     ) -> Product | None:
@@ -325,6 +334,23 @@ class Database:
             row = await cur.fetchone()
         await self.conn.commit()
         return int(row["id"])
+
+    async def update_product_availability(self, product_id: int, in_stock: bool) -> bool:
+        cur = await self.conn.execute(
+            "UPDATE products SET in_stock = ? WHERE id = ?",
+            (int(in_stock), product_id),
+        )
+        await self.conn.commit()
+        return cur.rowcount == 1
+
+    async def update_product_price(self, product_id: int, price: float) -> bool:
+        if price < 0:
+            return False
+        cur = await self.conn.execute(
+            "UPDATE products SET price = ? WHERE id = ?", (price, product_id)
+        )
+        await self.conn.commit()
+        return cur.rowcount == 1
 
     async def count_products(self) -> int:
         async with self.conn.execute("SELECT COUNT(*) AS c FROM products") as cur:
