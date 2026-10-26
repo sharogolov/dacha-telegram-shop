@@ -12,7 +12,7 @@ from aiogram.types import Message
 from config import Config
 from database import CartItem, Database
 from handlers.order_admin import notify_manager
-from keyboards.inline import main_menu_kb
+from handlers.order_chat import reply_keyboard
 
 router = Router(name='webapp')
 PHONE_RE = re.compile(r'^[+\d][\d\s\-()]{6,19}$')
@@ -22,22 +22,25 @@ def parse_checkout(raw: str) -> dict:
     if len(raw.encode('utf-8')) > 4096:
         raise ValueError('Заявка слишком большая. Сократите комментарий.')
     payload = json.loads(raw)
-    if not isinstance(payload, dict) or payload.get('version') != 2:
+    if not isinstance(payload, dict) or payload.get('version') not in (2, 3):
         raise ValueError('Обновите магазин: /start → «Открыть магазин».')
     request_id = payload.get('request_id')
     if not isinstance(request_id, str) or not re.fullmatch(r'[a-zA-Z0-9-]{16,64}', request_id):
         raise ValueError('Не удалось прочитать номер отправки. Откройте магазин заново.')
-    customer = payload.get('customer')
+    customer = payload.get('customer', {})
     if not isinstance(customer, dict):
-        raise ValueError('Заполните контактные данные в магазине.')
-    for key, low, high in [('full_name', 2, 80), ('phone', 7, 20), ('address', 5, 250)]:
-        value = customer.get(key)
-        if not isinstance(value, str) or not low <= len(value.strip()) <= high:
-            raise ValueError('Проверьте имя, телефон и адрес в заявке.')
-        customer[key] = value.strip()
-    if not PHONE_RE.fullmatch(customer['phone']):
+        raise ValueError('Не удалось прочитать данные заявки.')
+    # Optional fields from older Mini App versions. Account identity is always
+    # taken from Telegram's update, never from client-supplied user data.
+    details = {}
+    for key, high in [('phone', 20), ('address', 250)]:
+        value = customer.get(key, '')
+        if not isinstance(value, str) or len(value.strip()) > high:
+            raise ValueError('Проверьте дополнительные данные заявки.')
+        details[key] = value.strip()
+    if details['phone'] and not PHONE_RE.fullmatch(details['phone']):
         raise ValueError('Проверьте номер телефона.')
-    payload['customer'] = {key: customer[key] for key in ('full_name', 'phone', 'address')}
+    payload['customer'] = details
     items = payload.get('items')
     if not isinstance(items, list) or not 1 <= len(items) <= 30:
         raise ValueError('В заявке должно быть от 1 до 30 позиций.')
@@ -77,6 +80,7 @@ async def on_webapp_data(message: Message, state: FSMContext, db: Database,
                 try:
                     order = await db.create_order(
                         message.from_user.id, message.from_user.username,
+                        full_name=message.from_user.full_name,
                         **payload['customer'], items=items, request_id=payload['request_id'],
                     )
                 except Exception:
@@ -92,7 +96,7 @@ async def on_webapp_data(message: Message, state: FSMContext, db: Database,
     lines.append(f"\n{'Сумма известных цен' if unknown else 'Итого'}: <b>{order.total:.0f} ₽</b>")
     if unknown:
         lines.append('Цены отдельных позиций уточнит менеджер.')
-    lines.append('Менеджер свяжется с вами для подтверждения. Онлайн-оплаты нет.')
-    await message.answer('\n'.join(lines), reply_markup=main_menu_kb())
+    lines.append('Для связи используем ваш Telegram. Детали получения уточнит менеджер в переписке.')
+    await message.answer('\n'.join(lines), reply_markup=reply_keyboard(order.id))
     if not duplicate and not await notify_manager(bot, config, order):
         await message.answer('Заявка сохранена, но уведомление менеджеру пока не доставлено. Команда увидит её в общем списке.')

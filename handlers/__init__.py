@@ -7,6 +7,7 @@ from .catalog import router as catalog_router
 from .checkout import router as checkout_router
 from .inline_search import router as inline_search_router
 from .order_admin import router as order_admin_router
+from .order_chat import router as order_chat_router
 from .start import router as start_router
 from .webapp import router as webapp_router
 
@@ -20,6 +21,7 @@ def build_router() -> Router:
     # F.web_app_data filters win before catch-all message handlers.
     root.include_router(webapp_router)
     root.include_router(start_router)
+    root.include_router(order_chat_router)
     root.include_router(admin_router)
     root.include_router(order_admin_router)
     root.include_router(inline_search_router)

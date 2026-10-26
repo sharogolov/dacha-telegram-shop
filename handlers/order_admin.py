@@ -71,11 +71,15 @@ def _order_card(order: OrderSummary) -> str:
     lines = [
         f"🧾 <b>Заявка #{order.id}</b> — {STATUS_LABELS.get(order.status, order.status)}",
         f"<b>Создана:</b> {escape(order.created_at)} UTC",
-        f"<b>Покупатель:</b> {escape(order.full_name)}",
-        f"<b>Телефон:</b> {escape(order.phone)}",
-        f"<b>Адрес / комментарий:</b> {escape(order.address)}",
-        f"<b>User id:</b> <code>{order.user_id}</code>",
+        f'<b>Покупатель:</b> <a href="tg://user?id={order.user_id}">{escape(order.full_name)}</a>',
+        f"<b>Telegram ID:</b> <code>{order.user_id}</code>",
     ]
+    if order.phone:
+        lines.append(f"<b>Телефон:</b> {escape(order.phone)}")
+    if order.address:
+        lines.append(f"<b>Адрес / комментарий:</b> {escape(order.address)}")
+    else:
+        lines.append("Получение и доставку уточнить в Telegram.")
     if order.username:
         lines.append(f"<b>Username:</b> @{escape(order.username)}")
     lines.append("")
@@ -105,6 +109,9 @@ def _order_card(order: OrderSummary) -> str:
 def _status_kb(order: OrderSummary) -> InlineKeyboardMarkup:
     """Buttons for the next-allowed statuses."""
     builder = InlineKeyboardBuilder()
+    contact_url = f"https://t.me/{order.username}" if order.username else f"tg://user?id={order.user_id}"
+    builder.button(text="💬 Написать покупателю", url=contact_url)
+    builder.button(text="✉️ Написать через бота", callback_data=f"order_chat:{order.id}")
     allowed = STATUS_TRANSITIONS.get(order.status, frozenset())
     for status in ORDER_STATUSES:
         if status in allowed:

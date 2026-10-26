@@ -28,7 +28,7 @@ def payload(**changes):
 
 def message(raw=None, user_id=100):
     return SimpleNamespace(
-        from_user=SimpleNamespace(id=user_id, username=None),
+        from_user=SimpleNamespace(id=user_id, username=None, full_name="Имя из Telegram"),
         chat=SimpleNamespace(type='private'),
         web_app_data=SimpleNamespace(data=raw or payload()),
         answer=AsyncMock(),
@@ -62,7 +62,7 @@ async def test_checkout_snapshot_manager_and_duplicate(seeded_db):
     assert bot.send_message.await_count == 1
     assert bot.send_message.call_args.args[0] == 999
     assert config.team_ids == {888, 999}
-    assert 'Заявка #1 сохранена' in msg.answer.call_args.args[0]
+    assert any('Заявка #1 сохранена' in call.args[0] for call in msg.answer.call_args_list)
 
 
 @pytest.mark.asyncio
@@ -123,3 +123,63 @@ async def test_shop_uses_keyboard_webapp_for_send_data():
     keyboard = msg.answer.call_args.kwargs['reply_markup'].keyboard
     assert keyboard[0][0].web_app.url == 'https://example.com'
     assert any(button.text == '📋 Заказы команды' for row in keyboard for button in row)
+
+
+@pytest.mark.asyncio
+async def test_quick_order_uses_verified_telegram_profile(seeded_db):
+    raw = payload(version=3)
+    data = json.loads(raw)
+    del data['customer']
+    # A forged client profile must not control the buyer identity.
+    data['user_id'] = 123456
+    msg = message(json.dumps(data))
+    await on_webapp_data(msg, AsyncMock(), seeded_db, AsyncMock(), Config(bot_token='0:test', owner_chat_id=999))
+    order = (await seeded_db.list_orders())[0]
+    assert order.user_id == 100
+    assert order.full_name == 'Имя из Telegram'
+    assert order.username is None
+    assert order.phone == '' and order.address == ''
+    from handlers.order_admin import _order_card, _status_kb
+    assert 'tg://user?id=100' in _order_card(order)
+    buttons = [b for row in _status_kb(order).inline_keyboard for b in row]
+    assert any(b.callback_data == f'order_chat:{order.id}' for b in buttons)
+
+
+@pytest.mark.asyncio
+async def test_legacy_profile_name_is_not_trusted(seeded_db):
+    msg = message(payload(customer={'full_name': 'Поддельное имя', 'phone': '', 'address': ''}))
+    await on_webapp_data(msg, AsyncMock(), seeded_db, AsyncMock(), Config(bot_token='0:test'))
+    assert (await seeded_db.list_orders())[0].full_name == 'Имя из Telegram'
+
+
+@pytest.mark.asyncio
+async def test_order_chat_without_username_both_ways_and_authorization(seeded_db):
+    from handlers.order_chat import send_order_chat, start_order_chat
+    await on_webapp_data(message(), AsyncMock(), seeded_db, AsyncMock(), Config(bot_token='0:test'))
+    order = (await seeded_db.list_orders())[0]
+    config = Config(bot_token='0:test', owner_chat_id=999, admin_ids=[888])
+    call = SimpleNamespace(from_user=SimpleNamespace(id=777), answer=AsyncMock(),
+                           message=message(user_id=777), data=f'order_chat:{order.id}')
+    state = AsyncMock()
+    await start_order_chat(call, state, seeded_db, config)
+    assert call.answer.call_args.kwargs['show_alert']
+    state.set_state.assert_not_awaited()
+    call.from_user.id = 888
+    await start_order_chat(call, state, seeded_db, config)
+    state.set_state.assert_awaited_once()
+    state.get_data.return_value = {'order_chat_id': order.id}
+    bot = AsyncMock()
+    outgoing = message(user_id=888)
+    outgoing.text = 'Уточните удобный способ получения <test>'
+    await send_order_chat(outgoing, state, seeded_db, config, bot)
+    assert bot.send_message.call_args.args[0] == 100
+    assert '&lt;test&gt;' in bot.send_message.call_args.args[1]
+    incoming = message(user_id=100)
+    incoming.text = 'Хочу забрать самовывозом'
+    await send_order_chat(incoming, state, seeded_db, config, bot)
+    assert bot.send_message.call_args.args[0] == 999
+    forbidden = message(user_id=777)
+    forbidden.text = 'Посторонний'
+    before = bot.send_message.await_count
+    await send_order_chat(forbidden, state, seeded_db, config, bot)
+    assert bot.send_message.await_count == before

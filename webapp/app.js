@@ -8,7 +8,6 @@
       try { draft = { ...draft, ...JSON.parse(localStorage.getItem(storageKey) || '{}') }; } catch (_) {}
       if (typeof draft.fingerprint !== 'string' || !/^[a-f0-9]{64}$/.test(draft.fingerprint)) draft.requestId = draft.fingerprint = null;
       if (!draft.cart || typeof draft.cart !== 'object' || Array.isArray(draft.cart)) draft.cart = {};
-      let formDraft = {};
       let sending = false;
       const money = value => new Intl.NumberFormat('ru-RU', { maximumFractionDigits: 2 }).format(value) + ' ₽';
       const priceLabel = wine => wine.price ? money(wine.price) : 'Цена уточняется';
@@ -20,7 +19,6 @@
       const quantityControl = wine => `<div class="quantity"><button type="button" data-quantity="${esc(wine.sku)}" data-delta="-1" aria-label="Уменьшить количество">−</button><span aria-live="polite">${draft.cart[wine.sku] || 0} шт.</span><button type="button" data-quantity="${esc(wine.sku)}" data-delta="1" aria-label="Увеличить количество" ${draft.cart[wine.sku] >= 99 || !wine.in_stock ? 'disabled' : ''}>+</button></div>`;
       function back() {
         if (screen.name === 'wine') screen = { name: 'category', category: wines.find(wine => wine.id === screen.id)?.category || '' };
-        else if (screen.name === 'checkout') screen = { name: 'cart' };
         else screen = { name: 'home' };
         render();
         window.scrollTo(0, 0);
@@ -36,13 +34,8 @@
       function renderCart() {
         const lines = cartItems().map(({ wine, quantity }) => `<article class="cart-item"><img src="${esc(wine.image)}" alt=""><div><h2>${esc(wine.name)}</h2><span class="price">${wine.price ? money(wine.price * quantity) : 'Цена уточняется'}</span>${!wine.in_stock ? '<p class="stock-note">Закончилось — удалите из корзины.</p>' : ''}${quantityControl(wine)}</div></article>`).join('');
         const blocked = cartItems().some(({ wine }) => !wine.in_stock);
-        app.innerHTML = `<header class="masthead"><span>Дача Сердюка</span><span class="place">Ваш выбор</span></header><button class="back" data-back>← В каталог</button><h1 class="view-title">Корзина</h1>${lines || '<p class="state-message">Здесь пока пусто. Выберите напиток в каталоге.</p>'}${lines ? `<section class="cart-summary"><div class="cart-total"><span>${unknownPrices() ? 'Известные цены' : 'Итого'}</span><span>${money(cartTotal())}</span></div><p class="small">${unknownPrices() ? 'Цены отдельных позиций уточнит менеджер. ' : ''}Доставка согласуется отдельно. Онлайн-оплаты нет.</p><button class="primary" data-checkout ${blocked ? 'disabled' : ''}>Оформить заявку</button><button class="text-link" data-clear>Очистить корзину</button></section>` : ''}`;
+        app.innerHTML = `<header class="masthead"><span>Дача Сердюка</span><span class="place">Ваш выбор</span></header><button class="back" data-back>← В каталог</button><h1 class="view-title">Корзина</h1>${lines || '<p class="state-message">Здесь пока пусто. Выберите напиток в каталоге.</p>'}${lines ? `<section class="cart-summary"><div class="cart-total"><span>${unknownPrices() ? 'Известные цены' : 'Итого'}</span><span>${money(cartTotal())}</span></div><p class="small">${unknownPrices() ? 'Цены отдельных позиций уточнит менеджер. ' : ''}Доставка согласуется отдельно. Онлайн-оплаты нет.</p><p class="small">Для связи используем ваш Telegram. Получение уточним в переписке.</p><p id="cart-error" class="form-error" role="status"></p><button class="primary" data-send ${blocked ? 'disabled' : ''}>Отправить заявку</button>${draft.requestId ? '<p class="notice">Эта заявка уже передавалась боту. Результат — в чате. Повторная отправка не создаст дубль.</p><button class="text-link" data-new-order>Создать ещё один такой заказ</button>' : ''}<button class="text-link" data-clear>Очистить корзину</button></section>` : ''}`;
       }
-      function renderCheckout() {
-        if (!cartCount()) { screen = { name: 'cart' }; renderCart(); return; }
-        app.innerHTML = `<header class="masthead"><span>Дача Сердюка</span><span class="place">Заявка без оплаты</span></header><button class="back" data-back>← Корзина</button><h1 class="view-title">Детали заказа</h1><p class="view-description">${cartCount()} шт. · ${unknownPrices() ? 'известные цены: ' : ''}${money(cartTotal())}</p><form id="checkout-form" class="checkout-form"><label for="full-name">Как к вам обращаться</label><input id="full-name" name="full_name" autocomplete="name" minlength="2" maxlength="80" required value="${esc(formDraft.full_name || '')}"><label for="phone">Телефон для связи</label><input id="phone" name="phone" type="tel" autocomplete="tel" minlength="7" maxlength="20" required value="${esc(formDraft.phone || '')}"><label for="address">Город, адрес или пожелания к получению</label><textarea id="address" name="address" autocomplete="street-address" minlength="5" maxlength="250" required>${esc(formDraft.address || '')}</textarea><p class="small">Контакты и состав заявки будут доступны менеджеру и сотрудникам магазина с разрешённым доступом.</p><p class="small">${unknownPrices() ? 'Цены отдельных позиций и ' : ''}Доставку согласуем с менеджером до подтверждения.</p><p id="form-error" class="form-error" role="alert"></p><button type="submit" class="primary">Отправить заявку</button></form>${draft.requestId ? '<p class="notice">Эта заявка уже передавалась боту. Проверьте результат в чате. Повторная отправка с тем же составом и контактами не создаст дубль.</p><button class="text-link" data-new-order>Создать ещё один такой заказ</button>' : ''}`;
-      }
-
       const esc = value => String(value ?? '').replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[char]));
       const excerpt = text => {
         const sentence = String(text || '').split(/(?<=[.!?])\s+/)[0];
@@ -58,7 +51,6 @@
       function render() {
         document.getElementById('cart-dock')?.remove();
         if (screen.name === 'cart') { renderCart(); backButton(); return; }
-        if (screen.name === 'checkout') { renderCheckout(); backButton(); return; }
         if (tg) { tg.ready(); tg.expand(); tg.MainButton?.hide(); }
         backButton();
         if (screen.name === 'home') {
@@ -100,54 +92,42 @@
         else if (button.dataset.wine) screen = { name: 'wine', id: Number(button.dataset.wine) };
         else if (button.hasAttribute('data-about')) screen = { name: 'about' };
         else if (button.hasAttribute('data-cart')) screen = { name: 'cart' };
-        else if (button.hasAttribute('data-checkout')) screen = { name: 'checkout' };
+        else if (button.hasAttribute('data-send')) { sendOrder(button); return; }
         else if (button.hasAttribute('data-back')) { back(); return; }
         else if (button.hasAttribute('data-clear')) { draft = { cart: {}, requestId: null, fingerprint: null }; saveCart(); }
         else if (button.hasAttribute('data-new-order')) { draft.requestId = draft.fingerprint = null; saveCart(); }
         render(); window.scrollTo(0, 0);
       });
-      app.addEventListener('input', event => {
-        if (event.target.closest('#checkout-form')) formDraft = Object.fromEntries(new FormData(document.getElementById('checkout-form')));
-      });
-      app.addEventListener('submit', async event => {
-        if (event.target.id !== 'checkout-form') return;
-        event.preventDefault();
+      async function sendOrder(button) {
         if (sending) return;
-        const error = document.getElementById('form-error');
-        formDraft = Object.fromEntries(new FormData(event.target));
-        const customer = Object.fromEntries(Object.entries(formDraft).map(([key, value]) => [key, value.trim()]));
-        if (customer.full_name.length < 2 || !/^[+\d][\d\s\-()]{6,19}$/.test(customer.phone) || customer.address.length < 5) {
-          error.textContent = 'Проверьте имя, телефон и адрес.'; return;
-        }
+        const error = document.getElementById('cart-error');
         if (!cartCount() || cartItems().some(({ wine }) => !wine.in_stock)) { error.textContent = 'Проверьте наличие товаров в корзине.'; return; }
         if (!tg || tg.platform === 'unknown' || tg.initDataUnsafe?.query_id) {
           error.textContent = 'Откройте личный чат с ботом, отправьте /start и нажмите «Открыть магазин» под полем ввода.'; return;
         }
         const items = cartItems().map(({ wine, quantity }) => ({ sku: wine.sku, quantity, price: wine.price }));
-        if (!window.crypto?.subtle) { error.textContent = 'Для отправки требуется защищённое HTTPS-соединение.'; return; }
         sending = true;
-        const digest = await window.crypto.subtle.digest('SHA-256', new TextEncoder().encode(JSON.stringify({ items, customer })));
-        const fingerprint = Array.from(new Uint8Array(digest), byte => byte.toString(16).padStart(2, '0')).join('');
-        if (!draft.requestId || draft.fingerprint !== fingerprint) {
-          draft.requestId = window.crypto?.randomUUID?.() || Date.now().toString(36) + Math.random().toString(36).slice(2) + Math.random().toString(36).slice(2);
-          draft.fingerprint = fingerprint;
-        }
-        const payload = JSON.stringify({ version: 2, request_id: draft.requestId, items, customer });
-        if (new TextEncoder().encode(payload).length > 4096) { sending = false; error.textContent = 'Сократите адрес или комментарий.'; return; }
-        saveCart();
+        button.disabled = true;
         try {
-          sending = true;
-          event.target.querySelector('[type="submit"]').disabled = true;
+          const digest = await window.crypto.subtle.digest('SHA-256', new TextEncoder().encode(JSON.stringify({ version: 3, items })));
+          const fingerprint = Array.from(new Uint8Array(digest), byte => byte.toString(16).padStart(2, '0')).join('');
+          if (!draft.requestId || draft.fingerprint !== fingerprint) {
+            draft.requestId = window.crypto?.randomUUID?.() || Date.now().toString(36) + Math.random().toString(36).slice(2) + Math.random().toString(36).slice(2);
+            draft.fingerprint = fingerprint;
+          }
+          const payload = JSON.stringify({ version: 3, request_id: draft.requestId, items });
+          if (new TextEncoder().encode(payload).length > 4096) throw new Error('too big');
+          saveCart();
           tg.sendData(payload);
           error.textContent = 'Заявка передана Telegram. Результат появится в чате бота.';
         } catch (_) {
           sending = false;
-          event.target.querySelector('[type="submit"]').disabled = false;
+          button.disabled = false;
           error.textContent = 'Не удалось передать заявку. Попробуйте ещё раз.';
         }
-      });
+      }
       if (tg && tg.BackButton) tg.BackButton.onClick(back);
-      fetch('./catalog.json?v=' + encodeURIComponent(new URLSearchParams(location.search).get('v') || 'checkout-1'), { cache: 'no-store' }).then(response => {
+      fetch('./catalog.json?v=' + encodeURIComponent(new URLSearchParams(location.search).get('v') || 'quick-order-1'), { cache: 'no-store' }).then(response => {
         if (!response.ok) throw new Error('catalog unavailable');
         return response.json();
       }).then(data => {

@@ -1,6 +1,7 @@
 """/start, /help, the main menu, About screen, and deep-links."""
 from aiogram import F, Router
 from aiogram.filters import Command, CommandObject, CommandStart
+from aiogram.fsm.context import FSMContext
 from aiogram.types import CallbackQuery, KeyboardButton, Message, ReplyKeyboardMarkup, WebAppInfo
 
 from config import Config
@@ -26,9 +27,10 @@ ABOUT_TEXT = (
 
 
 @router.message(CommandStart())
-async def cmd_start(message: Message, command: CommandObject, db: Database, config: Config) -> None:
+async def cmd_start(message: Message, command: CommandObject, db: Database, config: Config, state: FSMContext) -> None:
     """Show the main menu, or jump straight to a product if the user came in
     via a `?start=product_N` deep link from inline search."""
+    await state.clear()
     arg = (command.args or "").strip()
     if arg.startswith("product_"):
         product_id = safe_int(arg[len("product_"):])
