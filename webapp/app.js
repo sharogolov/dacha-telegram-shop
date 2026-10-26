@@ -1,5 +1,6 @@
     (() => {
-      const tg = window.Telegram && window.Telegram.WebApp;
+      let tg = window.Telegram && window.Telegram.WebApp;
+      let boundTelegram = null;
       const app = document.getElementById('app');
       let wines = [];
       let screen = { name: 'home' };
@@ -38,7 +39,7 @@
       }
       const esc = value => String(value ?? '').replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[char]));
       const excerpt = text => {
-        const sentence = String(text || '').split(/(?<=[.!?])\s+/)[0];
+        const sentence = (String(text || '').match(/^[\s\S]*?[.!?](?=\s|$)/) || [String(text || '')])[0];
         return sentence.length > 125 ? sentence.slice(0, 122).trimEnd() + '…' : sentence;
       };
       const categories = () => [...new Set(wines.map(wine => wine.category))];
@@ -102,6 +103,7 @@
         if (sending) return;
         const error = document.getElementById('cart-error');
         if (!cartCount() || cartItems().some(({ wine }) => !wine.in_stock)) { error.textContent = 'Проверьте наличие товаров в корзине.'; return; }
+        connectTelegram();
         if (!tg || tg.platform === 'unknown' || tg.initDataUnsafe?.query_id) {
           error.textContent = 'Откройте личный чат с ботом, отправьте /start и нажмите «Открыть магазин» под полем ввода.'; return;
         }
@@ -126,8 +128,20 @@
           error.textContent = 'Не удалось передать заявку. Попробуйте ещё раз.';
         }
       }
-      if (tg && tg.BackButton) tg.BackButton.onClick(back);
-      fetch('./catalog.json?v=' + encodeURIComponent(new URLSearchParams(location.search).get('v') || 'quick-order-1'), { cache: 'no-store' }).then(response => {
+      function connectTelegram() {
+        tg = window.Telegram && window.Telegram.WebApp;
+        if (!tg || tg === boundTelegram) return;
+        boundTelegram = tg;
+        tg.ready();
+        tg.expand();
+        if (tg.BackButton) tg.BackButton.onClick(back);
+        backButton();
+      }
+      document.getElementById('telegram-sdk')?.addEventListener('load', connectTelegram);
+      connectTelegram();
+      const controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
+      const timeout = controller ? setTimeout(() => controller.abort(), 15000) : null;
+      fetch('./catalog.json?v=' + encodeURIComponent(new URLSearchParams(location.search).get('v') || 'compat-1'), { cache: 'no-store', ...(controller ? { signal: controller.signal } : {}) }).then(response => {
         if (!response.ok) throw new Error('catalog unavailable');
         return response.json();
       }).then(data => {
@@ -140,5 +154,5 @@
         render();
       }).catch(() => {
         app.innerHTML = '<p class="state-message">Не удалось загрузить винную карту. Проверьте подключение и откройте страницу ещё раз.</p>';
-      });
+      }).finally(() => { if (timeout) clearTimeout(timeout); });
     })();
