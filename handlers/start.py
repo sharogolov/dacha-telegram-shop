@@ -12,20 +12,15 @@ router = Router(name="start")
 
 
 WELCOME_TEXT = (
-    "👋 <b>Welcome to Roastline Coffee</b>\n\n"
-    "We deliver freshly roasted specialty coffee right to your door.\n\n"
-    "• 🛍 Browse the catalog\n"
-    "• 🧺 Add items to your cart\n"
-    "• ✅ Place an order in under a minute\n\n"
-    "Tap a button below to get started."
+    "👋 <b>Добро пожаловать в «Дачу Сердюка»</b>\n\n"
+    "Выберите вино в магазине, добавьте его в корзину и отправьте заявку.\n\n"
+    "После заявки команда свяжется с вами для уточнения деталей."
 )
 
 ABOUT_TEXT = (
-    "ℹ️ <b>About Roastline Coffee</b>\n\n"
-    "We are a small-batch roaster sourcing direct-trade green beans from "
-    "farms in Ethiopia, Colombia, Kenya and Brazil.\n\n"
-    "All beans are roasted to order and shipped within 24 hours.\n\n"
-    "Need help? Email <code>hello@roastline.example</code>."
+    "ℹ️ <b>О магазине «Дача Сердюка»</b>\n\n"
+    "Каталог вин работает внутри Telegram. Оплата онлайн пока не подключена.\n\n"
+    "После получения заявки команда свяжется с покупателем."
 )
 
 
@@ -43,7 +38,7 @@ async def cmd_start(message: Message, command: CommandObject, db: Database) -> N
                 caption = (
                     f"<b>{escape(product.name)}</b>\n\n"
                     f"{escape(product.description)}\n\n"
-                    f"💵 <b>${product.price:.2f}</b>"
+                    f"💵 <b>{product.price:.0f} ₽</b>"
                 )
                 await message.answer(caption, reply_markup=product_kb(product))
                 return

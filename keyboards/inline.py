@@ -26,15 +26,14 @@ def main_menu_kb(*, webapp_url: str | None = None) -> InlineKeyboardMarkup:
             webapp_url = None
 
     builder = InlineKeyboardBuilder()
-    builder.button(text="🛍 Catalog", callback_data="catalog")
-    builder.button(text="🧺 Cart", callback_data="cart")
+    if webapp_url:
+        builder.button(text="🍷 Открыть магазин", web_app=WebAppInfo(url=webapp_url))
     builder.button(text="📦 My orders", callback_data="my_orders")
     builder.button(text="ℹ️ About", callback_data="about")
-    if webapp_url:
-        builder.button(text="🌐 Open Shop", web_app=WebAppInfo(url=webapp_url))
-        builder.adjust(2, 2, 1)
-    else:
-        builder.adjust(2, 2)
+    if not webapp_url:
+        builder.button(text="🛍 Catalog", callback_data="catalog")
+        builder.button(text="🧺 Cart", callback_data="cart")
+    builder.adjust(1 if webapp_url else 2, 2)
     return builder.as_markup()
 
 

@@ -30,7 +30,9 @@ def test_main_menu_with_webapp_adds_button():
     kb = main_menu_kb(webapp_url="https://example.com/")
     btns = _all_buttons(kb)
     assert any(b.web_app for b in btns), "WebApp button missing"
-    assert sum(1 for _ in btns) == 5
+    assert sum(1 for _ in btns) == 3
+    assert "catalog" not in _callback_data(kb)
+    assert "cart" not in _callback_data(kb)
 
 
 def test_confirm_order_kb_payment_toggle():
