@@ -20,17 +20,19 @@ MAX_QTY = 99
 
 def _format_cart(items: list[CartItem]) -> str:
     if not items:
-        return "🧺 <b>Your cart is empty</b>\n\nBrowse the catalog to add some coffee."
-    lines = ["🧺 <b>Your cart</b>", ""]
+        return "🧺 <b>Корзина пуста</b>\n\nВыберите товары в магазине. Уже оформленные заявки находятся в «Мои заявки»."
+    lines = ["🧺 <b>Корзина</b>", ""]
     total = 0.0
     for item in items:
         lines.append(
-            f"• {escape(item.name)}\n   {item.quantity} × ${item.price:.2f} = "
-            f"<b>${item.subtotal:.2f}</b>"
+            f"• {escape(item.name)}\n   {item.quantity} × {item.price:.0f} ₽ = "
+            f"<b>{item.subtotal:.0f} ₽</b>" if item.price else
+            f"• {escape(item.name)}\n   {item.quantity} шт. · цена уточняется"
         )
         total += item.subtotal
     lines.append("")
-    lines.append(f"<b>Total: ${total:.2f}</b>")
+    label = "Сумма известных цен" if any(not item.price for item in items) else "Итого"
+    lines.append(f"<b>{label}: {total:.0f} ₽</b>")
     return "\n".join(lines)
 
 
@@ -93,7 +95,7 @@ async def cb_qty(call: CallbackQuery, db: Database) -> None:
     items = {item.product_id: item for item in await db.get_cart(user_id)}
     item = items.get(product_id)
     if not item and action != "rm":
-        await call.answer("Item is no longer in your cart", show_alert=True)
+        await call.answer("Этого товара уже нет в корзине", show_alert=True)
         await _render_cart(call.message, db, user_id)
         return
 
@@ -108,7 +110,7 @@ async def cb_qty(call: CallbackQuery, db: Database) -> None:
         await call.answer("➖")
     elif action == "rm":
         await db.remove_from_cart(user_id, product_id)
-        await call.answer("Removed", show_alert=False)
+        await call.answer("Товар удалён", show_alert=False)
 
     await _render_cart(call.message, db, user_id)
 
@@ -116,5 +118,5 @@ async def cb_qty(call: CallbackQuery, db: Database) -> None:
 @router.callback_query(F.data == "clear_cart")
 async def cb_clear(call: CallbackQuery, db: Database) -> None:
     await db.clear_cart(call.from_user.id)
-    await call.answer("Cart cleared")
+    await call.answer("Корзина очищена")
     await _render_cart(call.message, db, call.from_user.id)

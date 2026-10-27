@@ -56,7 +56,8 @@ async def show_shop_menu(message: Message, config: Config, user_id: int) -> None
         await message.answer("Откройте магазин в личном чате с ботом: /start.")
         return
     rows = [[KeyboardButton(text="🛍 Открыть магазин", web_app=WebAppInfo(url=config.webapp_url))],
-            [KeyboardButton(text="📦 Мои заявки")]]
+            [KeyboardButton(text="📦 Мои заявки")],
+            [KeyboardButton(text="🔄 Перезапустить магазин")]]
     if user_id in config.team_ids:
         rows.append([KeyboardButton(text="📋 Заказы команды")])
     await message.answer(WELCOME_TEXT, reply_markup=ReplyKeyboardMarkup(keyboard=rows, resize_keyboard=True))
@@ -79,6 +80,19 @@ async def cmd_help(message: Message) -> None:
         "/help — this message"
     )
     await message.answer(text)
+
+
+@router.message(Command("restart"))
+@router.message(F.text == "🔄 Перезапустить магазин")
+async def restart_shop(message: Message, state: FSMContext, db: Database, config: Config) -> None:
+    """Reset only this user's checkout state and cart, without restarting the bot."""
+    await state.clear()
+    await db.clear_cart(message.from_user.id)
+    await message.answer(
+        "🔄 Корзина бота и незавершённый ввод очищены.\n"
+        "Сохранённые заявки остаются в «Мои заявки». Новую заявку можно отменить в её карточке."
+    )
+    await show_shop_menu(message, config, message.from_user.id)
 
 
 @router.callback_query(F.data == "home")

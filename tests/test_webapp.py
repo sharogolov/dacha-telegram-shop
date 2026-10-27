@@ -50,15 +50,17 @@ async def test_checkout_snapshot_manager_and_duplicate(seeded_db):
     db = seeded_db
     msg, state, bot = message(), AsyncMock(), AsyncMock()
     config = Config(bot_token='0:test', owner_chat_id=999, admin_ids=[888])
-    # Existing bot cart must survive Mini App checkout.
+    # A successful order clears only this buyer's active bot cart.
     await db.add_to_cart(100, 2)
+    await db.add_to_cart(101, 3)
     await asyncio.gather(*(on_webapp_data(msg, state, db, bot, config) for _ in range(2)))
     orders = await db.list_orders()
     assert len(orders) == 1
     assert orders[0].total == 2800
     assert orders[0].items[0].quantity == 2
     assert orders[0].status == 'new'
-    assert len(await db.get_cart(100)) == 1
+    assert await db.get_cart(100) == []
+    assert len(await db.get_cart(101)) == 1
     assert bot.send_message.await_count == 1
     assert bot.send_message.call_args.args[0] == 999
     assert config.team_ids == {888, 999}

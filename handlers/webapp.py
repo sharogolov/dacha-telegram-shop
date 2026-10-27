@@ -62,6 +62,16 @@ def parse_checkout(raw: str) -> dict:
 @router.message(F.web_app_data, F.chat.type == 'private')
 async def on_webapp_data(message: Message, state: FSMContext, db: Database,
                          bot: Bot, config: Config) -> None:
+    # Mini App can explicitly clear the bot-side cart before closing itself.
+    try:
+        raw_payload = json.loads(message.web_app_data.data)
+    except (TypeError, ValueError, json.JSONDecodeError):
+        raw_payload = None
+    if isinstance(raw_payload, dict) and raw_payload.get('action') == 'clear_cart':
+        await db.clear_cart(message.from_user.id)
+        await state.clear()
+        await message.answer('🧺 Корзина очищена.')
+        return
     try:
         payload = parse_checkout(message.web_app_data.data)
         async with db.order_lock:

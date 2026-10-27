@@ -8,12 +8,11 @@ import re
 from html import escape
 
 from aiogram import Bot, F, Router
-from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
 from aiogram.types import CallbackQuery, Message
 
 from config import Config
-from database import STATUS_LABELS, Database, OrderSummary
+from database import Database, OrderSummary
 from keyboards.inline import cancel_kb, confirm_order_kb, main_menu_kb
 from states.order import CheckoutStates
 from utils.telegram import replace_or_edit
@@ -101,7 +100,10 @@ async def _render_review(
 async def start_checkout(call: CallbackQuery, db: Database, state: FSMContext) -> None:
     items = await db.get_cart(call.from_user.id)
     if not items:
-        await call.answer("Your cart is empty", show_alert=True)
+        from handlers.cart import _render_cart
+        await state.clear()
+        await _render_cart(call.message, db, call.from_user.id)
+        await call.answer("Корзина уже пуста", show_alert=True)
         return
     await state.set_state(CheckoutStates.full_name)
     text = (
@@ -260,36 +262,3 @@ async def confirm_order(
     from handlers.order_admin import notify_manager
     if not await notify_manager(bot, config, order):
         await call.message.answer("Заявка сохранена в общем списке, но уведомление менеджеру пока не доставлено.")
-
-
-def _format_user_orders(orders: list[OrderSummary]) -> str:
-    if not orders:
-        return "У вас пока нет заявок."
-    lines = ["📦 <b>Ваши заявки</b>", ""]
-    for o in orders:
-        item_count = sum(item.quantity for item in o.items)
-        lines.append(
-            f"#{o.id} · {escape(o.created_at)} UTC · {o.total:.0f} ₽ · "
-            f"{item_count} шт. · <i>{escape(STATUS_LABELS.get(o.status, o.status))}</i>"
-        )
-    return "\n".join(lines)
-
-
-@router.message(Command("orders"))
-@router.message(F.text == "📦 Мои заявки")
-async def cmd_my_orders(message: Message, db: Database) -> None:
-    if message.chat.type != "private":
-        return
-    orders = await db.list_user_orders(message.from_user.id, limit=10)
-    await message.answer(_format_user_orders(orders))
-
-
-@router.callback_query(F.data == "my_orders")
-async def cb_my_orders(call: CallbackQuery, db: Database) -> None:
-    if call.message.chat.type != "private":
-        await call.answer("Заявки доступны в личном чате с ботом", show_alert=True)
-        return
-    orders = await db.list_user_orders(call.from_user.id, limit=10)
-    text = _format_user_orders(orders)
-    await replace_or_edit(call.message, text, main_menu_kb())
-    await call.answer()

@@ -557,7 +557,11 @@ class Database:
                 "INSERT INTO webapp_submissions (user_id, request_id, order_id) VALUES (?, ?, ?)",
                 (user_id, request_id, order_id),
             )
-        if from_cart:
+        # A Mini App submission supplies a validated item snapshot instead of
+        # reading cart_items, but it still represents the user's active cart.
+        # Clear the legacy bot cart after a successful order so it does not
+        # retain items that have already been submitted.
+        if from_cart or request_id:
             await self.conn.execute("DELETE FROM cart_items WHERE user_id = ?", (user_id,))
         await self.conn.commit()
 
@@ -587,9 +591,9 @@ class Database:
         """All orders, newest first. Admin-only — uses a single JOIN to avoid N+1."""
         return await self._fetch_orders(limit=limit, offset=offset)
 
-    async def list_user_orders(self, user_id: int, limit: int = 20) -> list[OrderSummary]:
+    async def list_user_orders(self, user_id: int, limit: int = 20, *, active_only: bool = False, offset: int = 0) -> list[OrderSummary]:
         """Orders belonging to a specific user. Always filter by user_id, never by username."""
-        return await self._fetch_orders(limit=limit, user_id=user_id)
+        return await self._fetch_orders(limit=limit, user_id=user_id, active_only=active_only, offset=offset)
 
     async def _fetch_orders(
         self,
@@ -598,6 +602,7 @@ class Database:
         user_id: int | None = None,
         order_id: int | None = None,
         offset: int = 0,
+        active_only: bool = False,
     ) -> list[OrderSummary]:
         # Build the inner subquery that picks the most recent order ids for the
         # requested scope. Three literal branches — no user data is interpolated.
@@ -608,8 +613,12 @@ class Database:
             inner_subquery = "SELECT id FROM orders ORDER BY id DESC LIMIT ? OFFSET ?"
             params = (limit, offset)
         else:
-            inner_subquery = "SELECT id FROM orders WHERE user_id = ? ORDER BY id DESC LIMIT ?"
-            params = (user_id, limit)
+            inner_subquery = (
+                "SELECT id FROM orders WHERE user_id = ? "
+                "AND (? = 0 OR status IN ('new', 'confirmed', 'shipping')) "
+                "ORDER BY id DESC LIMIT ? OFFSET ?"
+            )
+            params = (user_id, int(active_only), limit, offset)
 
         query = f"""
             SELECT
@@ -684,6 +693,7 @@ class Database:
         changed_by: int | None = None,
         note: str | None = None,
         force: bool = False,
+        expected_status: str | None = None,
     ) -> tuple[bool, str | None]:
         """Move an order to ``new_status``. Returns (ok, error_message_or_None).
 
@@ -696,6 +706,8 @@ class Database:
         order = await self.get_order(order_id)
         if not order:
             return False, f"Order #{order_id} not found"
+        if expected_status is not None and order.status != expected_status:
+            return False, "Статус заявки уже изменился. Обновите карточку."
         if order.status == new_status:
             return False, f"Order is already {new_status!r}"
         if not force and new_status not in STATUS_TRANSITIONS.get(order.status, frozenset()):

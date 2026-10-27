@@ -35,7 +35,7 @@
       function renderCart() {
         const lines = cartItems().map(({ wine, quantity }) => `<article class="cart-item"><img src="${esc(wine.image)}" alt=""><div><h2>${esc(wine.name)}</h2><span class="price">${wine.price ? money(wine.price * quantity) : 'Цена уточняется'}</span>${!wine.in_stock ? '<p class="stock-note">Закончилось — удалите из корзины.</p>' : ''}${quantityControl(wine)}</div></article>`).join('');
         const blocked = cartItems().some(({ wine }) => !wine.in_stock);
-        app.innerHTML = `<header class="masthead"><span>Дача Сердюка</span><span class="place">Ваш выбор</span></header><button class="back" data-back>← В каталог</button><h1 class="view-title">Корзина</h1>${lines || '<p class="state-message">Здесь пока пусто. Выберите напиток в каталоге.</p>'}${lines ? `<section class="cart-summary"><div class="cart-total"><span>${unknownPrices() ? 'Известные цены' : 'Итого'}</span><span>${money(cartTotal())}</span></div><p class="small">${unknownPrices() ? 'Цены отдельных позиций уточнит менеджер. ' : ''}Доставка согласуется отдельно. Онлайн-оплаты нет.</p><p class="small">Для связи используем ваш Telegram. Получение уточним в переписке.</p><p id="cart-error" class="form-error" role="status"></p><button class="primary" data-send ${blocked ? 'disabled' : ''}>Отправить заявку</button>${draft.requestId ? '<p class="notice">Эта заявка уже передавалась боту. Результат — в чате. Повторная отправка не создаст дубль.</p><button class="text-link" data-new-order>Создать ещё один такой заказ</button>' : ''}<button class="text-link" data-clear>Очистить корзину</button></section>` : ''}`;
+        app.innerHTML = `<header class="masthead"><span>Дача Сердюка</span><span class="place">Ваш выбор</span></header><button class="back" data-back>← В каталог</button><h1 class="view-title">Корзина</h1>${lines || '<p class="state-message">Здесь пока пусто. Выберите напиток в каталоге.</p>'}${lines ? `<section class="cart-summary"><div class="cart-total"><span>${unknownPrices() ? 'Известные цены' : 'Итого'}</span><span>${money(cartTotal())}</span></div><p class="small">${unknownPrices() ? 'Цены отдельных позиций уточнит менеджер. ' : ''}Доставка согласуется отдельно. Онлайн-оплаты нет.</p><p class="small">Для связи используем ваш Telegram. Получение уточним в переписке.</p><p id="cart-error" class="form-error" role="status"></p><button class="primary" data-send ${blocked ? 'disabled' : ''}>Оформить заказ</button>${draft.requestId ? '<p class="notice">Эта заявка уже передавалась боту. Результат — в чате. Повторная отправка не создаст дубль.</p><button class="text-link" data-new-order>Создать ещё один такой заказ</button>' : ''}<button class="text-link" data-clear>Очистить корзину</button></section>` : ''}`;
       }
       const esc = value => String(value ?? '').replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[char]));
       const excerpt = text => {
@@ -95,7 +95,7 @@
         else if (button.hasAttribute('data-cart')) screen = { name: 'cart' };
         else if (button.hasAttribute('data-send')) { sendOrder(button); return; }
         else if (button.hasAttribute('data-back')) { back(); return; }
-        else if (button.hasAttribute('data-clear')) { draft = { cart: {}, requestId: null, fingerprint: null }; saveCart(); }
+        else if (button.hasAttribute('data-clear')) { clearCart(); return; }
         else if (button.hasAttribute('data-new-order')) { draft.requestId = draft.fingerprint = null; saveCart(); }
         render(); window.scrollTo(0, 0);
       });
@@ -126,6 +126,13 @@
           sending = false;
           button.disabled = false;
           error.textContent = 'Не удалось передать заявку. Попробуйте ещё раз.';
+        }
+      }
+      function clearCart() {
+        draft = { cart: {}, requestId: null, fingerprint: null }; saveCart(); render();
+        connectTelegram();
+        if (tg && tg.platform !== 'unknown' && !tg.initDataUnsafe?.query_id) {
+          tg.sendData(JSON.stringify({ version: 3, action: 'clear_cart' }));
         }
       }
       function connectTelegram() {
